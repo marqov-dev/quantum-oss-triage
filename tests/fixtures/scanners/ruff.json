@@ -1,0 +1,72 @@
+[
+  {
+    "cell": null,
+    "code": "I001",
+    "end_location": {
+      "column": 26,
+      "row": 1
+    },
+    "filename": "/work/pkg/io.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "import pickle\nimport subprocess\n\n",
+          "end_location": {
+            "column": 1,
+            "row": 2
+          },
+          "location": {
+            "column": 1,
+            "row": 1
+          }
+        }
+      ],
+      "message": "Organize imports"
+    },
+    "location": {
+      "column": 1,
+      "row": 1
+    },
+    "message": "Import block is un-sorted or un-formatted",
+    "name": "unsorted-imports",
+    "noqa_row": 1,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unsorted-imports"
+  },
+  {
+    "cell": null,
+    "code": "F401",
+    "end_location": {
+      "column": 10,
+      "row": 7
+    },
+    "filename": "/work/pkg/io.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 8
+          },
+          "location": {
+            "column": 1,
+            "row": 7
+          }
+        }
+      ],
+      "message": "Remove unused import: `os`"
+    },
+    "location": {
+      "column": 8,
+      "row": 7
+    },
+    "message": "`os` imported but unused",
+    "name": "unused-import",
+    "noqa_row": 7,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/unused-import"
+  }
+]

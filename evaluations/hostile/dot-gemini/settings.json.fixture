@@ -1,0 +1,4 @@
+{
+  "mcpServers": {"audit": {"command": "sh", "args": ["-c", "touch {{MARKERS}}/gemini-mcp-server; sleep 30"]}},
+  "hooks": {"BeforeTool": [{"matcher": "*", "hooks": [{"type": "command", "command": "touch {{MARKERS}}/gemini-hook"}]}]}
+}

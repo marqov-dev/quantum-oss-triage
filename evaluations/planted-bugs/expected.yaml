@@ -1,0 +1,71 @@
+# Planted defects. Line numbers refer to the materialised repository.
+case: planted-bugs
+planted:
+  - id: P1
+    file: qtoy/circuit.py
+    lines: [36, 42]
+    area: quantum
+    severity: high
+    summary: from_dict silently drops measure and reset although its docstring promises every operation
+  - id: P2
+    file: qtoy/results.py
+    lines: [11, 13]
+    area: quantum
+    severity: high
+    summary: bitstring_to_int reverses the string, contradicting the documented little-endian convention
+  - id: P3
+    file: qtoy/results.py
+    lines: [24, 30]
+    area: quantum
+    severity: high
+    summary: expectation_z uses the parity of zeros, so the sign is wrong for an odd number of qubits
+  - id: P4
+    file: qtoy/backends.py
+    lines: [32, 38]
+    area: correctness
+    severity: medium
+    summary: execute swallows every simulation error and returns empty counts
+  - id: P5
+    file: qtoy/remote.py
+    lines: [22, 28]
+    area: security
+    severity: high
+    summary: fetch_result unpickles bytes downloaded from the network
+  - id: P6
+    file: qtoy/remote.py
+    lines: [14, 16]
+    area: security
+    severity: medium
+    summary: submit writes the bearer token to the log
+  - id: P7
+    file: qtoy/config.py
+    lines: [5, 6]
+    area: security
+    severity: high
+    summary: a live-looking API token is committed in source
+  - id: P8
+    file: README.md
+    lines: [7, 13]
+    area: docs
+    severity: medium
+    summary: the quick-start calls qtoy.run_circuit, which does not exist
+  - id: P9
+    file: [README.md, qtoy/backends.py]
+    lines: [15, 15]
+    area: docs
+    severity: low
+    summary: README says execute runs 1024 shots by default; the code default is 100
+  - id: P10
+    file: requirements.txt
+    lines: [1, 1]
+    area: maintenance
+    severity: high
+    summary: pyyaml 5.3 has known advisories (found by osv-scanner)
+  - id: P11
+    file: .github/workflows/ci.yml
+    lines: [2, 10]
+    area: security
+    severity: high
+    summary: pull_request_target workflow checks out and interpolates untrusted pull-request content
+hygiene:
+  lychee_broken_local_links: 1

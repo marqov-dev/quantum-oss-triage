@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/review-output.schema.json",
+  "title": "Review skill output",
+  "description": "What one review skill returns from one model. Strict (every property required, nulls allowed where marked) so Codex --output-schema accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["findings", "coverage"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "area", "file", "line_start", "line_end", "claim", "evidence", "why_it_matters", "applies_because", "proposed_severity", "security_impact", "confidence", "suggested_check"],
+        "properties": {
+          "title": {"type": "string", "minLength": 3, "maxLength": 160},
+          "area": {"type": "string", "enum": ["security", "correctness", "docs", "tests", "maintenance", "quantum"]},
+          "file": {"type": "string", "description": "Path relative to the repository root."},
+          "line_start": {"type": "integer", "minimum": 1},
+          "line_end": {"type": "integer", "minimum": 1},
+          "claim": {"type": "string", "description": "What is wrong, in one or two sentences."},
+          "evidence": {"type": "string", "description": "The code or text that shows it, quoted or paraphrased with line references."},
+          "why_it_matters": {"type": "string"},
+          "applies_because": {"type": ["string", "null"], "description": "For conditional rules: the documentation or API promise that makes this a defect."},
+          "proposed_severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+          "security_impact": {"type": "boolean"},
+          "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+          "suggested_check": {"type": ["string", "null"], "description": "How someone could confirm the claim, e.g. an input and the expected versus actual output."}
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewed", "not_reviewed", "notes"],
+      "properties": {
+        "reviewed": {"type": "array", "items": {"type": "string"}},
+        "not_reviewed": {"type": "array", "items": {"type": "string"}},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

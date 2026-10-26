@@ -1,0 +1,16 @@
+#!/bin/sh
+# A fake AI CLI. Behaviour comes from files beside the script, because the
+# adapters run it with a stripped environment.
+here=$(cd "$(dirname "$0")" && pwd)
+n=$(cat "$here/count" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$here/count"
+env > "$here/env.$n"
+printf '%s\n' "$@" > "$here/args.$n"
+if [ "$1" = "--version" ]; then echo "fakecli 9.9.9"; exit 0; fi
+mode=$(sed -n "${n}p" "$here/modes" 2>/dev/null); [ -n "$mode" ] || mode=$(tail -n1 "$here/modes")
+case "$mode" in
+  good) cat "$here/good.json" ;;
+  bad) echo '{"result": "not json at all", "structured_output": null, "is_error": false}' ;;
+  limit) echo '{"is_error": true, "result": "Claude AI usage limit reached|1793000000"}'; exit 1 ;;
+  signedout) echo '{"is_error": true, "result": "Not logged in · Please run /login"}'; exit 1 ;;
+  hang) sleep 30 ;;
+esac

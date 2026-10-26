@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+# Run records hold unredacted findings: they belong in the private runs repository.
+runs/
+outbox/

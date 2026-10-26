@@ -1,0 +1,36 @@
+[project]
+name = "quantum-oss-triage"
+version = "0.1.0"
+description = "Open method and harness for multi-model AI triage of open-source quantum repositories"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+qot = "harness.__main__:main"
+
+[dependency-groups]
+dev = ["pytest>=8.3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["harness"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "harness/_data/schemas"
+"skills" = "harness/_data/skills"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "docker: needs the worker image",
+    "live: calls a real AI CLI and spends subscription usage",
+]
+addopts = "-m 'not live'"

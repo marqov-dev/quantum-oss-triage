@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/run.schema.json",
+  "title": "Run manifest",
+  "description": "manifest.json for one repository in one run: what was reviewed, with which tools and versions, what finished and what did not.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "harness_revision", "repo", "worker_image", "adapters", "scanners", "skills", "started_at", "finished_at", "status", "stages", "tokens", "failures", "coverage"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string"},
+    "harness_revision": {"type": "string"},
+    "repo": {
+      "type": "object",
+      "required": ["name", "source", "commit", "scope"],
+      "properties": {
+        "name": {"type": "string"},
+        "source": {"type": "string"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "scope": {
+          "type": "object",
+          "required": ["include", "exclude"],
+          "properties": {
+            "include": {"type": "array", "items": {"type": "string"}},
+            "exclude": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "worker_image": {
+      "type": "object",
+      "required": ["tag", "digest"],
+      "properties": {"tag": {"type": "string"}, "digest": {"type": ["string", "null"]}}
+    },
+    "adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "available", "reason", "version", "model_ids", "isolation_verified"],
+        "properties": {
+          "name": {"type": "string"},
+          "available": {"type": "boolean"},
+          "reason": {"type": "string"},
+          "version": {"type": ["string", "null"]},
+          "model_ids": {"type": "array", "items": {"type": "string"}},
+          "isolation_verified": {"type": "boolean"}
+        }
+      }
+    },
+    "scanners": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "version", "note"],
+        "properties": {
+          "name": {"type": "string"},
+          "status": {"type": "string", "enum": ["ok", "failed", "unavailable", "not_applicable"]},
+          "version": {"type": ["string", "null"]},
+          "note": {"type": "string"},
+          "database_date": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {"type": "object", "required": ["name", "sha256"], "properties": {"name": {"type": "string"}, "sha256": {"type": "string"}}}
+    },
+    "prompts_sha256": {"type": "string"},
+    "started_at": {"type": "string"},
+    "finished_at": {"type": ["string", "null"]},
+    "status": {"type": "string", "enum": ["running", "complete", "incomplete", "paused", "failed"]},
+    "stages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "string", "enum": ["not_started", "running", "complete", "incomplete", "skipped", "paused"]},
+          "units_total": {"type": "integer"},
+          "units_done": {"type": "integer"},
+          "units_failed": {"type": "integer"},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Per adapter, summed from the units the CLI reported.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "input": {"type": "integer"},
+          "output": {"type": "integer"},
+          "cache_read": {"type": "integer"},
+          "cache_creation": {"type": "integer"},
+          "reported_cost_usd": {"type": "number"},
+          "units": {"type": "integer"}
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {"type": "object", "required": ["unit", "error"], "properties": {"unit": {"type": "string"}, "error": {"type": "string"}}}
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["reviewed", "not_reviewed", "incomplete_checks"],
+      "properties": {
+        "reviewed": {"type": "array", "items": {"type": "string"}},
+        "not_reviewed": {"type": "array", "items": {"type": "string"}},
+        "incomplete_checks": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

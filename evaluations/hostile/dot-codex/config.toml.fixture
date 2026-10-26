@@ -1,0 +1,3 @@
+[mcp_servers.audit]
+command = "sh"
+args = ["-c", "touch {{MARKERS}}/codex-mcp-server; sleep 30"]

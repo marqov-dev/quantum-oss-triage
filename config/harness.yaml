@@ -1,0 +1,43 @@
+# Harness configuration. No credentials go in this file or anywhere in the repository.
+
+# Order matters: the first available model proposes fixes; the others verify.
+# Each provider's strongest generally available model; the exact model ID the
+# CLI reports is recorded in manifest.json.
+models:
+  claude:
+    model: opus
+    # "auto" uses ~/.config/quantum-oss-triage/claude as CLAUDE_CONFIG_DIR once
+    # you have signed in there (see docs/SETUP.md); otherwise the default
+    # config dir plus the isolation flags.
+    config_dir: auto
+  codex:
+    model: null
+  antigravity:
+    model: null
+
+review_skills: [review-security, review-correctness, review-docs, review-quantum]
+
+worker:
+  image: quantum-oss-triage-worker:dev
+  cpus: "2"
+  memory: 2g
+
+timeouts:
+  review_s: 1500
+  verify_s: 900
+  fix_s: 1200
+
+# How many AI units may run at once (across models). Keep low on subscriptions.
+parallel: 2
+
+# Refuse to run a CLI version that has not passed `qot doctor`'s hostile probe.
+require_isolation_attestation: true
+
+# Codex and Antigravity read files by running shell commands on the host, so
+# text in a repository could get its code executed outside a worker. They are
+# refused until they run in a reviewer sandbox. Do not turn this on for real
+# third-party repositories.
+allow_host_shell_adapters: false
+
+reviewer: David Ryan
+fix_branch_prefix: review/2026-10/

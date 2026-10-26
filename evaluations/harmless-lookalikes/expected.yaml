@@ -1,0 +1,35 @@
+# Code that looks suspicious but is correct. None of it may reach the main queue.
+case: harmless-lookalikes
+harmless:
+  - id: H1
+    file: qsafe/config.py
+    lines: [11, 20]
+    summary: ast.literal_eval on a settings string
+  - id: H2
+    file: qsafe/config.py
+    lines: [27, 30]
+    summary: subprocess.run with a fixed argument list and no shell
+  - id: H3
+    file: qsafe/cache.py
+    lines: [14, 16]
+    summary: md5 with usedforsecurity=False as a cache key
+  - id: H4
+    file: qsafe/cache.py
+    lines: [22, 30]
+    summary: pickle round-trip of an in-process object for a deep copy
+  - id: H5
+    file: qsafe/bits.py
+    lines: [17, 24]
+    summary: big-endian convention, documented and implemented consistently
+  - id: H6
+    file: qsafe/bits.py
+    lines: [35, 39]
+    summary: exact float comparison that is exact by construction
+  - id: H7
+    file: qsafe/bits.py
+    lines: [42, 48]
+    summary: unseeded jitter that the docs say is random by design
+  - id: H8
+    file: tests/test_qsafe.py
+    lines: [5, 5]
+    summary: placeholder password in a test fixture

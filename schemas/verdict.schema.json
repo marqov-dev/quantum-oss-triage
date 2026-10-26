@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/verdict.schema.json",
+  "title": "Verifier verdict",
+  "description": "Output of verify-finding (kind=finding) and verify-fix (kind=fix). Strict, so Codex --output-schema accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "verdict", "reason", "lines_read", "security_impact", "proposed_severity", "reproduction", "fix_assessment"],
+  "properties": {
+    "kind": {"type": "string", "enum": ["finding", "fix"]},
+    "verdict": {"type": "string", "enum": ["confirm", "refute", "unsure"]},
+    "reason": {"type": "string", "minLength": 1},
+    "lines_read": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line_start", "line_end"],
+        "properties": {
+          "file": {"type": "string"},
+          "line_start": {"type": "integer", "minimum": 1},
+          "line_end": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "security_impact": {"type": "boolean"},
+    "proposed_severity": {"anyOf": [{"type": "string", "enum": ["critical", "high", "medium", "low", "info"]}, {"type": "null"}]},
+    "reproduction": {
+      "description": "Optional behavioural reproduction. Counts as validation only if test_code fails at the reviewed commit and control_code passes, both run in a worker.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["expected_behaviour_source", "claimed_failure", "test_code", "control_code"],
+          "properties": {
+            "expected_behaviour_source": {"type": "string", "description": "Where the expected behaviour comes from: docs, a reference implementation, or the maths."},
+            "claimed_failure": {"type": "string"},
+            "test_code": {"type": "string", "description": "A self-contained pytest file. It must fail at the reviewed commit for the claimed reason."},
+            "control_code": {"type": "string", "description": "A self-contained pytest file exercising a nearby case that must pass at the reviewed commit."}
+          }
+        },
+        {"type": "null"}
+      ]
+    },
+    "fix_assessment": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fixes_cause", "keeps_behaviour", "regression_risk"],
+          "properties": {
+            "fixes_cause": {"type": "string", "enum": ["yes", "no", "unsure"]},
+            "keeps_behaviour": {"type": "string", "enum": ["yes", "no", "unsure"]},
+            "regression_risk": {"type": "string"}
+          }
+        },
+        {"type": "null"}
+      ]
+    }
+  }
+}

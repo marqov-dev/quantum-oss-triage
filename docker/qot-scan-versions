@@ -1,0 +1,14 @@
+#!/bin/sh
+# Print one "tool<TAB>version" line per scanner in the image. Missing tools print
+# "unavailable", so the harness records them instead of treating them as passes.
+v() { name=$1; shift; out=$("$@" 2>/dev/null | head -n1) || out=""; [ -n "$out" ] || out=unavailable; printf '%s\t%s\n' "$name" "$out"; }
+v gitleaks gitleaks version
+v osv-scanner sh -c 'osv-scanner --version | head -n1'
+v semgrep semgrep --version
+v zizmor zizmor --version
+v ruff ruff --version
+v bandit sh -c 'bandit --version | head -n1'
+v lychee lychee --version
+v pytest sh -c 'python -m pytest --version 2>&1'
+v python python --version
+if [ -f /opt/semgrep/python.yml ]; then printf 'semgrep-rules\tsha256:%s\n' "$(cat /opt/semgrep/*.yml | sha256sum | cut -c1-16)"; fi

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/fix-output.schema.json",
+  "title": "Proposed fix",
+  "description": "Output of propose-fix. Strict, so Codex --output-schema accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feasible", "diff", "summary", "files_changed", "notes"],
+  "properties": {
+    "feasible": {"type": "boolean"},
+    "diff": {"type": "string", "description": "A unified diff against the reviewed commit, applicable with git apply from the repository root. Empty when not feasible."},
+    "summary": {"type": "string"},
+    "files_changed": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"}
+  }
+}

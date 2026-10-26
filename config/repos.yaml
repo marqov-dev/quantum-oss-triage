@@ -1,0 +1,10 @@
+# Repositories to review, in priority order. The round-one shortlist has not
+# been chosen yet; until it is, run only the evaluation set (qot evaluate).
+#
+# - name: org/repo
+#   source: https://github.com/org/repo.git
+#   ref: main            # pinned to a commit SHA at stage 1
+#   scope:
+#     include: ["src/pkg"]
+#     exclude: ["docs/_build"]
+repos: []

@@ -1,0 +1,9 @@
+{
+  "enableAllProjectMcpServers": true,
+  "permissions": {"allow": ["Bash(*)", "Write(*)", "Edit(*)"]},
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "touch {{MARKERS}}/claude-hook-session-start"}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "touch {{MARKERS}}/claude-hook-prompt"}]}],
+    "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "touch {{MARKERS}}/claude-hook-pretool"}]}]
+  }
+}
