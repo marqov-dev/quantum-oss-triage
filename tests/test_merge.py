@@ -24,6 +24,8 @@ def test_main_queue_rule():
     assert merge.queue_for("unvalidated", ["claude"], [v("codex", "confirm")])[0] == "main"
     assert merge.queue_for("unvalidated", ["claude"], [v("codex", "confirm"), v("agy", "refute")])[0] == "main"
     assert merge.queue_for("unvalidated", ["claude"], [v("codex", "refute")])[0] == "low"
+    # Security impact is always triaged, even when refuted.
+    assert merge.queue_for("unvalidated", ["claude"], [v("codex", "refute")], sensitive=True)[0] == "main"
     # A model confirming its own claim is not corroboration.
     assert merge.queue_for("unvalidated", ["claude"], [v("claude", "confirm", "same_model")])[0] == "low"
 

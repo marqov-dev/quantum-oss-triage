@@ -2,15 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/fix-output.schema.json",
   "title": "Proposed fix",
-  "description": "Output of propose-fix. Strict, so Codex --output-schema accepts it.",
+  "description": "Output of propose-fix: exact search-and-replace edits. The harness applies them to a clean copy and produces the diff itself, because model-written unified diffs are often malformed. Strict, so Codex --output-schema accepts it.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["feasible", "diff", "summary", "files_changed", "notes"],
+  "required": ["feasible", "edits", "summary", "notes"],
   "properties": {
     "feasible": {"type": "boolean"},
-    "diff": {"type": "string", "description": "A unified diff against the reviewed commit, applicable with git apply from the repository root. Empty when not feasible."},
+    "edits": {
+      "type": "array",
+      "description": "Applied in order. Empty when not feasible.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "old", "new"],
+        "properties": {
+          "path": {"type": "string", "description": "File path relative to the repository root."},
+          "old": {"type": "string", "description": "Exact text to replace, copied from the file, including indentation. It must occur exactly once in the file at that point in the sequence. Empty string means create a new file."},
+          "new": {"type": "string", "description": "Replacement text (the whole content for a new file)."}
+        }
+      }
+    },
     "summary": {"type": "string"},
-    "files_changed": {"type": "array", "items": {"type": "string"}},
     "notes": {"type": "string"}
   }
 }

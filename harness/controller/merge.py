@@ -3,8 +3,10 @@
 Every original claim is kept inside the merged record's detections. The rules
 here are deliberately small and explicit so they can be audited and tuned:
 
-- Main queue: validated, or found independently by two models, or confirmed by
-  an independent verifier with no refutation, or disputed (confirm + refute).
+- Main queue: anything sensitive (security impact is always looked at by a
+  person, even when refuted), or validated, or found independently by two
+  models, or confirmed by an independent verifier with no refutation, or
+  disputed (confirm + refute).
 - Sensitive: area security, or any model marked security impact, or raised by
   a secrets, advisory or workflow scanner. Severity never decides this.
 """
@@ -112,10 +114,13 @@ def corroboration_status(independent_models: list[str], verifications: list[dict
     return "single_source"
 
 
-def queue_for(validation_status: str, independent_models: list[str], verifications: list[dict]) -> tuple[str, str]:
+def queue_for(validation_status: str, independent_models: list[str], verifications: list[dict],
+              sensitive: bool = False) -> tuple[str, str]:
     ind = [v for v in verifications if v["independence"] == "independent"]
     confirms = sum(v["verdict"] == "confirm" for v in ind)
     refutes = sum(v["verdict"] == "refute" for v in ind)
+    if sensitive:
+        return "main", "security impact: always triaged by a person"
     if validation_status == "reproduced":
         return "main", "validated by reproduction"
     if len(independent_models) >= 2:
@@ -172,8 +177,8 @@ def build_record(repo: str, commit: str, fid: str, g: list[dict], verifications:
         "security_impact": bool(c.get("security_impact")), "rule_id": c.get("rule_id"),
     } for c in g]
     independent_models = sorted({c["tool"] for c in g if c["tool"] in MODEL_TOOLS})
-    queue, why = queue_for(validation["status"], independent_models, verifications)
     sens = sensitivity_for(g, verifications)
+    queue, why = queue_for(validation["status"], independent_models, verifications, sens["sensitive"])
     snippet = snapshot.read_lines(source_dir, rep["file"], rep["line_start"], rep["line_end"])
     proposed = [{"by": c["tool"] + (f"/{c['skill']}" if c.get("skill") else ""), "value": c["proposed_severity"]} for c in g]
     proposed += [{"by": f"verify/{v['verifier']}", "value": v["proposed_severity"]} for v in verifications

@@ -139,7 +139,11 @@ stops.
    decision (accept, reject, duplicate, defer, investigate) and a severity per
    finding in `decisions.yaml`.
 7. **Fixes.** For accepted findings only. The first available model proposes
-   a diff, and the others review it with `verify-fix`. A worker applies it to
+   exact search-and-replace edits (model-written diffs are often malformed).
+   The harness applies them to a temporary clone, refusing paths outside the
+   repository and old text that does not occur exactly once, and takes the
+   diff from git. Invalid edits get one retry with the reason. The other
+   models review the diff with `verify-fix`. A worker applies it to
    a throwaway copy, reruns the reproduction (which must now pass) and the
    existing tests (which must not regress). A fix with any objection stays
    `pending_objections`. Non-security fixes get a planned branch
@@ -151,10 +155,12 @@ stops.
 
 ### Queue and sensitivity rules
 
-- **Main queue:** validated by reproduction, or found independently by two
-  models, or confirmed by an independent verifier with no refutation, or
-  disputed (confirmed and refuted). Everything else goes to the low-priority
-  list. This is the starting rule, to be tuned after the first batch.
+- **Main queue:** anything sensitive (see below), even when refuted, so a
+  person always looks at secrets, credentials in logs and other security
+  claims; or validated by reproduction; or found independently by two models;
+  or confirmed by an independent verifier with no refutation; or disputed
+  (confirmed and refuted). Everything else goes to the low-priority list.
+  This is the starting rule, to be tuned after the first batch.
 - **Sensitive:** the area is security, or any model or verifier marked
   security impact, or gitleaks, osv-scanner or zizmor raised it. Severity
   never decides sensitivity. A reviewer can add the flag; removing it needs a
@@ -202,9 +208,10 @@ Stubbed or not built yet:
   run shell commands on the host. The next piece of work is the reviewer
   sandbox: a container per CLI holding only the review copy and that CLI's
   sign-in. Until then round one has one model. A claim that model makes is
-  rechecked only by the same model, which does not count, so a model-found
-  security finding (which has no reproduction) stays on the low-priority list.
-  Scanner leads are still checked independently by the model.
+  rechecked only by the same model, which does not count toward
+  corroboration.
+  Scanner leads are still checked independently by the model. Security
+  claims reach the main queue anyway, through the sensitivity rule.
 - **Dependency installation** in a registry-only network step is not built.
   Project tests run with only what the worker image has, so suites with
   dependencies fail at import and are reported as such.

@@ -1,6 +1,6 @@
 ---
 name: propose-fix
-description: Write the smallest correct fix for an accepted finding as a unified diff, in the fix-output schema.
+description: Write the smallest correct fix for an accepted finding as exact search-and-replace edits, in the fix-output schema.
 metadata:
   output_schema: fix-output
   version: "0.1"
@@ -31,7 +31,15 @@ dependency").
 
 ## Output
 
-Return only a JSON object matching the fix-output schema. `diff` is a unified
-diff against the reviewed commit with `a/` and `b/` prefixes, applicable with
-`git apply` from the repository root. Make sure hunk headers and line counts
-are exact.
+Return only a JSON object matching the fix-output schema. Express the fix as
+`edits`, applied in order to the reviewed commit:
+
+- `path`: the file, relative to the repository root.
+- `old`: text copied exactly from the file, with its indentation and line
+  breaks. It must occur exactly once in the file at that point. Include a line
+  or two of surrounding context if needed to make it unique.
+- `new`: the replacement text.
+- To create a file, set `old` to an empty string and put the whole file in
+  `new`.
+
+Do not write a diff; the harness produces one from your edits.

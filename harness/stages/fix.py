@@ -1,6 +1,7 @@
 """Stage 7: fixes for accepted findings only.
 
-One model writes the fix; the others review it. The fix is applied to a
+One model writes the fix as exact search-and-replace edits, the harness turns
+them into a diff with git, and the other models review it. The fix is applied to a
 throwaway copy in a worker, where the reproduction must now pass and the
 existing tests must not regress. Nothing is pushed: non-security fixes get a
 planned branch that waits for explicit approval, and security fixes are
@@ -10,6 +11,8 @@ exported only as a private .patch file.
 from __future__ import annotations
 
 import re
+import shutil
+from pathlib import Path
 
 from harness import secrets
 from harness.controller import prompts, skills
@@ -55,6 +58,55 @@ def check_in_worker(ctx: RepoContext, fid: str, diff: str, repro_code: str | Non
             "tests_baseline": baseline.get("summary", "none"), "tests_regressed": regressed}
 
 
+class EditError(ValueError):
+    pass
+
+
+def build_diff(ctx: RepoContext, fid: str, edits: list[dict]) -> str:
+    """Apply search-and-replace edits to a temporary clone and return git's diff.
+
+    Only text operations happen on the host; nothing from the repository runs.
+    """
+    from harness.stages.pin import git
+
+    tree = ctx.repo_dir / "fixes" / fid / "tree"
+    if tree.exists():
+        shutil.rmtree(tree)
+    tree.parent.mkdir(parents=True, exist_ok=True)
+    git(["clone", "--quiet", "--no-hardlinks", "--no-recurse-submodules", str(ctx.source_dir), str(tree)])
+    try:
+        root = tree.resolve()
+        created = []
+        for i, e in enumerate(edits, 1):
+            rel = Path(e["path"])
+            target = (tree / rel).resolve()
+            if rel.is_absolute() or ".." in rel.parts or not str(target).startswith(str(root) + "/") \
+                    or rel.parts[:1] == (".git",) or (tree / rel).is_symlink():
+                raise EditError(f"edit {i}: path {e['path']!r} is outside the repository")
+            if e["old"] == "":
+                if target.exists():
+                    raise EditError(f"edit {i}: {e['path']} already exists; to change it, give the exact old text")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(e["new"])
+                created.append(str(rel))
+                continue
+            if not target.is_file():
+                raise EditError(f"edit {i}: {e['path']} does not exist")
+            text = target.read_text()
+            n = text.count(e["old"])
+            if n != 1:
+                raise EditError(f"edit {i}: the old text occurs {n} times in {e['path']}; it must occur exactly once")
+            target.write_text(text.replace(e["old"], e["new"], 1))
+        if created:
+            git(["add", "--intent-to-add", "--", *created], cwd=tree)
+        diff = git(["diff", "--no-color", "--no-ext-diff", "--no-textconv"], cwd=tree)
+    finally:
+        shutil.rmtree(tree, ignore_errors=True)
+    if not diff.strip():
+        raise EditError("the edits change nothing")
+    return diff + "\n"
+
+
 def fix_one(ctx: RepoContext, f: dict) -> dict:
     order = ctx.model_order()
     if not order:
@@ -70,8 +122,26 @@ def fix_one(ctx: RepoContext, f: dict) -> dict:
     if not call.ok:
         return {"status": "proposal_failed", "proposer": proposer, "notes": call.error or ""}
     prop = call.payload
-    if not prop["feasible"] or not prop["diff"].strip():
+    if not prop["feasible"] or not prop["edits"]:
         return {"status": "not_feasible", "proposer": proposer, "notes": prop["notes"]}
+    try:
+        diff = build_diff(ctx, f["id"], prop["edits"])
+    except EditError as e:
+        # One retry, telling the model exactly what did not fit.
+        prompt = prompts.propose_fix(skills.load("propose-fix"), ctx.spec.name, ctx.commit, f,
+                                     {"test_code": repro_code} if repro_code else None)
+        prompt += f"\n\nYour previous edits could not be applied: {e}. Copy `old` text exactly from the file."
+        call = ctx.call_model("fix", f"{f['id']}-retry", proposer, "propose-fix", prompt, ctx.config.timeouts["fix_s"])
+        if not call.ok:
+            return {"status": "proposal_failed", "proposer": proposer, "notes": call.error or ""}
+        prop = call.payload
+        if not prop["feasible"] or not prop["edits"]:
+            return {"status": "not_feasible", "proposer": proposer, "notes": prop["notes"]}
+        try:
+            diff = build_diff(ctx, f["id"], prop["edits"])
+        except EditError as e2:
+            return {"status": "edits_invalid", "proposer": proposer, "notes": str(e2)}
+    prop = {**prop, "diff": diff, "files_changed": sorted({e["path"] for e in prop["edits"]})}
     fix_dir = ctx.repo_dir / "fixes" / f["id"]
     fix_dir.mkdir(parents=True, exist_ok=True)
     (fix_dir / "fix.diff").write_text(prop["diff"])
@@ -134,7 +204,7 @@ def run(ctx: RepoContext) -> list[dict]:
     accepted = [f for f in findings if f["disposition"]["decision"] == "accept"]
     for f in accepted:
         # Rechecking is cheap: the proposal and reviews are cached units.
-        if f.get("fix") and f["fix"].get("status") not in (None, "pending", "proposal_failed", "apply_failed"):
+        if f.get("fix") and f["fix"].get("status") not in (None, "pending", "proposal_failed", "apply_failed", "edits_invalid"):
             continue
         ctx.log(f"  fix {f['id']} ...")
         f["fix"] = fix_one(ctx, f)

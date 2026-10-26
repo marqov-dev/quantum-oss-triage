@@ -16,14 +16,7 @@ REPRO = {
     "test_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom m import add\n\ndef test_add():\n    assert add(2, 3) == 5\n",
     "control_code": "import sys, os\nsys.path.insert(0, os.getcwd())\nfrom m import add\n\ndef test_zero():\n    assert add(0, 0) == 0\n",
 }
-FIX = """--- a/m.py
-+++ b/m.py
-@@ -1,3 +1,3 @@
- def add(a, b):
-     \"\"\"Return a + b.\"\"\"
--    return a - b
-+    return a + b
-"""
+FIX = [{"path": "m.py", "old": "    return a - b\n", "new": "    return a + b\n"}]
 
 
 @pytest.fixture
@@ -53,7 +46,7 @@ def worker(monkeypatch):
 
 def two_models(**claude_kw):
     # Claude is first in the configured order, so it proposes fixes; codex verifies.
-    return {"claude": FakeAdapter("claude", reviews={"review-correctness": [finding()]}, fix_diff=FIX, **claude_kw),
+    return {"claude": FakeAdapter("claude", reviews={"review-correctness": [finding()]}, fix_edits=FIX, **claude_kw),
             "codex": FakeAdapter("codex", reproduction=REPRO)}
 
 
@@ -161,3 +154,25 @@ def test_unattested_cli_is_refused(tmp_path, monkeypatch):
     assert usable == {} and "isolation not verified" in rows[0]["reason"]
     usable, _ = pipeline.build_adapters(cfg, require_attestation=False)
     assert "claude" in usable
+
+
+def test_fix_edits_must_match_exactly_once_and_stay_inside(tmp_path, repo, config, worker):
+    from harness.stages import fix as fix_stage
+
+    run_dir = tmp_path / "run"
+    pipeline.run(config, run_dir, [repo], stages=("pin",), adapters=two_models(), worker=worker, log=lambda *_: None)
+    from harness.controller.context import RepoContext
+    from harness.controller.ledger import Ledger
+    from harness.controller.manifest import Manifest
+
+    m = Manifest.open(run_dir / repo.slug / "manifest.json", run_id="r", repo={})
+    ctx = RepoContext(repo, "r", run_dir, config, Ledger(run_dir), m, worker, {})
+    diff = fix_stage.build_diff(ctx, "QOT-x", FIX + [{"path": "tests/test_m.py", "old": "", "new": "def test_a():\n    pass\n"}])
+    assert "-    return a - b" in diff and "+    return a + b" in diff and "b/tests/test_m.py" in diff
+    for bad in ([{"path": "m.py", "old": "nope", "new": "x"}],
+                [{"path": "../escape.py", "old": "", "new": "x"}],
+                [{"path": ".git/config", "old": "", "new": "x"}],
+                [{"path": "m.py", "old": "a", "new": "b"}]):  # 'a' occurs several times
+        with pytest.raises(fix_stage.EditError):
+            fix_stage.build_diff(ctx, "QOT-x", bad)
+    assert not (tmp_path / "escape.py").exists()

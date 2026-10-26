@@ -21,14 +21,14 @@ class FakeAdapter(Adapter):
     """Returns canned replies. `reviews` maps skill name -> list of findings."""
 
     def __init__(self, name: str, reviews: dict | None = None, verdict: str = "confirm", reproduction=None,
-                 limit_after: int | None = None, fix_diff: str | None = None):
+                 limit_after: int | None = None, fix_edits: list | None = None):
         super().__init__()
         self.name = name
         self.reviews = reviews or {}
         self.verdict = verdict
         self.reproduction = reproduction
         self.limit_after = limit_after
-        self.fix_diff = fix_diff
+        self.fix_edits = fix_edits
         self.calls: list[tuple[str, str]] = []
 
     def available(self):
@@ -52,5 +52,5 @@ class FakeAdapter(Adapter):
                     "reproduction": self.reproduction if kind == "finding" else None,
                     "fix_assessment": {"fixes_cause": "yes", "keeps_behaviour": "yes", "regression_risk": "low"} if kind == "fix" else None}
         else:
-            data = {"feasible": bool(self.fix_diff), "diff": self.fix_diff or "", "summary": "fix", "files_changed": ["m.py"], "notes": ""}
+            data = {"feasible": bool(self.fix_edits), "edits": self.fix_edits or [], "summary": "fix", "notes": ""}
         return AdapterResult(True, data, json.dumps(data), f"{self.name}-model-1", tokens, attempts=1)

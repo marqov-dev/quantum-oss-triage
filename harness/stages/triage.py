@@ -41,7 +41,8 @@ def _models(ctx: RepoContext) -> str:
 
 
 def render_triage(ctx: RepoContext, findings: list[dict]) -> str:
-    main = [f for f in findings if f["disposition"]["queue"] == "main"]
+    main = sorted((f for f in findings if f["disposition"]["queue"] == "main"),
+                  key=lambda f: not f["sensitivity"]["sensitive"])
     low = [f for f in findings if f["disposition"]["queue"] == "low"]
     m = ctx.manifest.data
     lines = [f"# Triage: {ctx.spec.name} at `{ctx.commit[:12]}`", "",
@@ -150,6 +151,7 @@ def apply(ctx: RepoContext, decided_by: str | None = None) -> dict:
             sens.update(sensitive=False, removal_reason=d["removal_reason"])
         elif d.get("sensitive") is True and not sens["sensitive"]:
             sens.update(sensitive=True, reasons=sens["reasons"] + ["set by reviewer"])
+            f["disposition"].update(queue="main", queue_reason="security impact: always triaged by a person")
         if decision != "pending":
             f["disposition"].update(decision=decision, decided_by=reviewer, decided_at=stamp,
                                     note=d.get("note") or "", duplicate_of=d.get("duplicate_of"))
