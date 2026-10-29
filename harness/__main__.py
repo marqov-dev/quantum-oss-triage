@@ -28,7 +28,7 @@ def main(argv=None) -> int:
     r.add_argument("--repo", action="append")
     r.add_argument("--repos-file", type=Path)
     r.add_argument("--run-dir")
-    r.add_argument("--stages", default="pin,scan,review,verify,validate,triage,fix")
+    r.add_argument("--stages", default="pin,deps,scan,review,verify,validate,triage,fix")
     r.add_argument("--models", help="comma-separated subset of configured models")
     r.add_argument("--retry-failed", action="store_true")
     r.add_argument("--no-attestation-check", action="store_true", help="for development only")
@@ -37,10 +37,11 @@ def main(argv=None) -> int:
     t.add_argument("run_dir", type=Path)
     t.add_argument("--repo", required=True)
 
-    p = sub.add_parser("publish", help="run the publisher process (local files only in v0.1)")
+    p = sub.add_parser("publish", help="run the publisher process (local outbox; Marqov only with --live)")
     p.add_argument("run_dir", type=Path)
     p.add_argument("--repo", action="append")
     p.add_argument("--public-summary", action="store_true")
+    p.add_argument("--live", action="store_true", help="upload to the configured Marqov Projects (default: dry run)")
 
     d = sub.add_parser("doctor", help="check the worker image and probe each CLI's isolation")
     d.add_argument("--models")
@@ -50,6 +51,14 @@ def main(argv=None) -> int:
     e.add_argument("--cases")
     e.add_argument("--models")
     e.add_argument("--no-attestation-check", action="store_true", help="for development only")
+
+    sb = sub.add_parser("sandbox-build", help="build the reviewer sandbox images for Codex and Antigravity")
+    sb.add_argument("clis", nargs="*", default=["codex", "agy"])
+
+    sl = sub.add_parser("sandbox-login", help="sign a CLI in inside its reviewer sandbox (interactive)")
+    sl.add_argument("cli", choices=["codex", "agy"])
+    sl.add_argument("--copy", action="store_true",
+                    help="copy only the operator's sign-in file instead (Codex: ~/.codex/auth.json)")
 
     s = sub.add_parser("status", help="summarise a run directory")
     s.add_argument("run_dir", type=Path)
@@ -97,6 +106,10 @@ def main(argv=None) -> int:
             cmd += ["--repo", repo]
         if args.public_summary:
             cmd.append("--public-summary")
+        if args.live:
+            cmd.append("--live")
+        if args.config:
+            cmd += ["--config", str(args.config)]
         return subprocess.run(cmd, env=cleanenv.base_env([os.path.dirname(sys.executable)]), cwd=REPO_ROOT).returncode
 
     if args.cmd == "doctor":
@@ -113,6 +126,33 @@ def main(argv=None) -> int:
                            require_attestation=False if args.no_attestation_check else None)
         print((Path(res["run_dir"]) / "evaluation.md").read_text())
         return 0 if res["passed"] else 1
+
+    if args.cmd == "sandbox-build":
+        from harness.adapters import sandbox
+
+        for cli in args.clis:
+            sb_ = sandbox.ReviewerSandbox(cli)
+            cmd = ["docker", "build", "-f", str(sandbox.DOCKERFILE), "--target", sb_.spec.target, "-t", sb_.image,
+                   str(sandbox.DOCKERFILE.parent)]
+            print(" ".join(cmd))
+            if subprocess.run(cmd).returncode != 0:
+                return 1
+        return 0
+
+    if args.cmd == "sandbox-login":
+        from harness.adapters import sandbox
+
+        sb_ = sandbox.ReviewerSandbox(args.cli)
+        if args.copy:
+            copied = sb_.copy_personal_auth()
+            if not copied:
+                print(f"nothing to copy for {args.cli}; run `qot sandbox-login {args.cli}` without --copy",
+                      file=sys.stderr)
+                return 1
+            print(f"copied {', '.join(copied)} into {sb_.home}")
+            return 0
+        print(f"Signing {args.cli} in inside its sandbox. The sign-in is stored only in {sb_.home}.")
+        return subprocess.run(sb_.login_command()).returncode
 
     if args.cmd == "status":
         for m in sorted(args.run_dir.glob("*/manifest.json")):

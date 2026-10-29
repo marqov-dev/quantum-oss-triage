@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import json
 import shutil
 import subprocess
 import time
@@ -11,6 +13,10 @@ from pathlib import Path
 from harness.workers.base import MAX_OUTPUT_BYTES, Worker, WorkerResult
 
 DEFAULT_IMAGE = "quantum-oss-triage-worker:dev"
+PROXY_SCRIPT = Path(__file__).resolve().parents[2] / "docker" / "registry-proxy.py"
+# The package registries the dependency step may reach, and nothing else.
+REGISTRY_HOSTS = ("pypi.org", "files.pythonhosted.org")
+PROXY_PORT = 3128
 
 # The wrapper runs inside the container. Output goes to size-limited tmpfs
 # files first, so a runaway process cannot fill the host disk or our memory.
@@ -35,6 +41,12 @@ class DockerWorker(Worker):
                  work_size: str = "1g", tmp_size: str = "512m", docker: str = "docker"):
         self.image, self.cpus, self.memory, self.pids = image, cpus, memory, pids
         self.work_size, self.tmp_size, self.docker = work_size, tmp_size, docker
+        self.deps_dir: Path | None = None
+
+    def with_deps(self, deps_dir: Path) -> "DockerWorker":
+        w = copy.copy(self)
+        w.deps_dir = Path(deps_dir) if (Path(deps_dir) / "venv" / "bin" / "python").exists() else None
+        return w
 
     def available(self) -> tuple[bool, str]:
         if not shutil.which(self.docker):
@@ -71,7 +83,68 @@ class DockerWorker(Worker):
         ]
         if inputs is not None:
             cmd += ["-v", f"{Path(inputs).resolve()}:/inputs:ro"]
+        if self.deps_dir is not None:
+            # Installed dependencies, read-only. The code under review comes
+            # from the working copy, which shadows any installed copy of it.
+            root = "/work" if writable_copy else "/src"
+            cmd += ["-v", f"{self.deps_dir.resolve()}:/deps:ro",
+                    "-e", "PATH=/deps/venv/bin:/usr/local/bin:/usr/bin:/bin",
+                    "-e", f"PYTHONPATH={root}/src:{root}", "-e", "PYTHONDONTWRITEBYTECODE=1"]
         return cmd + [self.image, "sh", "-c", wrapper]
+
+    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
+        """Run `script` with network access to the package registry only.
+
+        The install container joins an internal network with no route out; a
+        proxy container on that network and the default bridge forwards HTTPS
+        to REGISTRY_HOSTS only. The container writes only to /deps (the
+        repository's dependency folder) and its own tmpfs.
+        """
+        tag = uuid.uuid4().hex[:12]
+        net, proxy, name = f"qot-registry-{tag}", f"qot-proxy-{tag}", f"qot-deps-{tag}"
+        deps_dir = Path(deps_dir)
+        deps_dir.mkdir(parents=True, exist_ok=True)
+        deps_dir.chmod(0o777)  # the container user is 65534
+        d = self.docker
+        start = time.monotonic()
+        log = ""
+        try:
+            subprocess.run([d, "network", "create", "--internal", net], check=True, capture_output=True, timeout=60)
+            subprocess.run([d, "run", "-d", "--rm", "--name", proxy, "--network", net,
+                            "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                            "--user", "65534:65534", "--memory", "256m", "--pids-limit", "64",
+                            "-v", f"{PROXY_SCRIPT}:/proxy.py:ro", self.image,
+                            "python", "/proxy.py", str(PROXY_PORT), *REGISTRY_HOSTS],
+                           check=True, capture_output=True, timeout=60)
+            subprocess.run([d, "network", "connect", "bridge", proxy], check=True, capture_output=True, timeout=60)
+            cap = MAX_OUTPUT_BYTES
+            wrapper = _WRAPPER % (script, cap, cap, cap, cap)
+            url = f"http://{proxy}:{PROXY_PORT}"
+            cmd = [d, "run", "--rm", "--name", name, "--network", net,
+                   "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                   "--pids-limit", str(self.pids), "--memory", "4g", "--memory-swap", "4g", "--cpus", self.cpus,
+                   "--user", "65534:65534",
+                   "--tmpfs", f"/work:size={self.work_size},uid=65534,gid=65534,mode=0700",
+                   "--tmpfs", "/tmp:size=3g,mode=1777",
+                   "-v", f"{Path(src).resolve()}:/src:ro", "-v", f"{deps_dir.resolve()}:/deps:rw",
+                   "-e", "HOME=/tmp", "-e", "QOT_COPY=1", "-e", "QOT_CWD=/work",
+                   "-e", f"HTTPS_PROXY={url}", "-e", f"https_proxy={url}",
+                   "-e", "PIP_DISABLE_PIP_VERSION_CHECK=1", "-e", "PIP_NO_INPUT=1", "-e", "PIP_NO_CACHE_DIR=1",
+                   self.image, "sh", "-c", wrapper]
+            try:
+                p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, stdin=subprocess.DEVNULL,
+                                   errors="replace")
+                result = WorkerResult(p.returncode, p.stdout, p.stderr, truncated="[qot: output truncated]" in p.stderr)
+            except subprocess.TimeoutExpired:
+                subprocess.run([d, "kill", name], capture_output=True)
+                result = WorkerResult(None, "", "timed out", timed_out=True)
+            log = subprocess.run([d, "logs", proxy], capture_output=True, text=True, timeout=60).stdout
+        finally:
+            subprocess.run([d, "rm", "-f", proxy, name], capture_output=True, timeout=60)
+            subprocess.run([d, "network", "rm", net], capture_output=True, timeout=60)
+        result.duration_s = time.monotonic() - start
+        result.proxy_log = [json.loads(x) for x in log.splitlines() if x.startswith("{")]
+        return result
 
     def run(self, script: str, src: Path, *, inputs: Path | None = None, network: bool = False,
             timeout_s: int = 600, writable_copy: bool = True) -> WorkerResult:

@@ -78,7 +78,8 @@ class RepoContext:
         rec = unit.load()
         if rec and rec["status"] == "done":
             return ModelCall(True, rec["payload"], rec.get("model_id"), unit.key)
-        if rec and rec["status"] == "failed" and not self.retry_failed:
+        # A unit the provider refused for capacity is always tried again.
+        if rec and rec["status"] == "failed" and not self.retry_failed and not rec.get("capacity_refused"):
             return ModelCall(False, None, rec.get("model_id"), unit.key, rec.get("error"))
         skill = skills.load(skill_name)
         self.log(f"  {stage} {unit_skill} on {model} ...")
@@ -91,6 +92,8 @@ class RepoContext:
         if r.ok:
             unit.save("done", r.data, **meta)
             return ModelCall(True, r.data, r.model_id, unit.key)
+        if r.capacity_refused:
+            meta["extra"]["capacity_refused"] = True
         unit.save("failed", {"raw": r.raw[-50000:]}, error=r.error, **meta)
         self.manifest.fail(unit.key, r.error or "failed")
         return ModelCall(False, None, r.model_id, unit.key, r.error)

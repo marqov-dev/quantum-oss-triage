@@ -13,16 +13,16 @@ from pathlib import Path
 import yaml
 
 from harness import adapters as adapter_mod
-from harness.controller import attest, prompts, skills
+from harness.controller import attest, prior, prompts, skills
 from harness.controller.config import Config, RepoSpec
 from harness.controller.context import RepoContext, UsageLimitReached
 from harness.controller.ledger import Ledger
 from harness.controller.manifest import Manifest
-from harness.stages import fix, pin, review, scan, triage, validate, verify
+from harness.stages import deps, fix, pin, review, scan, triage, validate, verify
 from harness.workers.base import Worker
 from harness.workers.docker import DockerWorker
 
-DEFAULT_STAGES = ("pin", "scan", "review", "verify", "validate", "triage", "fix")
+DEFAULT_STAGES = ("pin", "deps", "scan", "review", "verify", "validate", "triage", "fix")
 
 
 def build_adapters(config: Config, only: list[str] | None = None, require_attestation: bool | None = None):
@@ -39,7 +39,7 @@ def build_adapters(config: Config, only: list[str] | None = None, require_attest
             ok, reason = False, "not selected for this run"
         elif ok and a.runs_shell_on_host and not config.allow_host_shell_adapters:
             ok, reason = False, ("runs shell commands on the host, so repository code could run outside a worker; "
-                                 "needs the reviewer sandbox (not built in v0.1)")
+                                 "set sandbox: true (the default) to run it in the reviewer sandbox")
         elif ok and require and not verified:
             ok, reason = False, f"isolation not verified for {version!r}; run `qot doctor`"
         rows.append({"name": name, "available": ok, "reason": reason if not ok else (mode or "ok"), "version": version,
@@ -52,6 +52,8 @@ def build_adapters(config: Config, only: list[str] | None = None, require_attest
 def _run_stage(ctx: RepoContext, stage: str) -> None:
     if stage == "pin":
         pin.run(ctx)
+    elif stage == "deps":
+        deps.run(ctx)
     elif stage == "scan":
         scan.run(ctx)
     elif stage == "review":
@@ -59,7 +61,8 @@ def _run_stage(ctx: RepoContext, stage: str) -> None:
             ctx.manifest.incomplete("review: no AI CLI available and isolation-verified")
         review.run(ctx)
     elif stage == "verify":
-        verify.run(ctx, ctx.read_json("leads.json", []) + ctx.read_json("candidates.json", []))
+        verify.run(ctx, ctx.read_json("leads.json", []) + prior.load(ctx.repo_dir, ctx.spec.name)
+                   + ctx.read_json("candidates.json", []))
     elif stage == "validate":
         validate.run(ctx, ctx.read_json("groups.json", []))
     elif stage == "triage":
@@ -121,6 +124,8 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
         for a in rows:
             if not a["used"]:
                 manifest.incomplete(f"model {a['name']} not used: {a['reason']}")
+        if worker is not None:  # dependencies installed earlier in this run
+            ctx.worker = worker.with_deps(ctx.repo_dir / "deps")
         pinned = ledger.unit(spec.name, "pin", None, None)
         if pinned.done():
             ctx.commit = pinned.payload()["commit"]

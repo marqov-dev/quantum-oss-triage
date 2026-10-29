@@ -44,10 +44,17 @@ Run `/login` inside, then exit. With `config_dir: auto` (the default in
 
 ### Codex and Antigravity
 
-Install them and sign in with your own accounts. The Codex adapter links only
-`~/.codex/auth.json` into its own `CODEX_HOME`. Neither adapter has been run
-against a real install yet. Confirm the flags with `codex exec --help` and
-`agy --help`, then run `qot doctor`.
+They run in reviewer sandbox containers, not on the host. The host installs
+are not used by the harness.
+
+```bash
+uv run qot sandbox-build            # both images (Linux builds of codex-cli 0.164.0 and agy 1.4.7)
+uv run qot sandbox-login codex --copy   # copy only ~/.codex/auth.json, or omit --copy for device-code sign-in
+uv run qot sandbox-login agy        # interactive: open the URL, sign in, paste the code within 60 seconds
+uv run qot doctor --models codex,antigravity
+```
+
+The sign-ins are kept only in `~/.config/quantum-oss-triage/sandbox/<cli>/home`.
 
 ## Running
 
@@ -63,6 +70,29 @@ uv run qot publish runs/<run-id> --public-summary
 
 Rerunning `qot run` with the same `--run-dir` resumes from the last finished
 unit. `--retry-failed` reruns units whose output failed validation twice.
+Units a provider refused because its model was at capacity are rerun on any
+resume, without the flag.
+
+## Publishing to Marqov
+
+`qot publish` is a dry run unless given `--live`. The Marqov Project and
+document ids are kept out of this repository, in
+`~/.config/quantum-oss-triage/marqov-targets.yaml`, which uses the same keys
+as `publish.marqov` in `config/harness.yaml` and is laid over it:
+
+```yaml
+hub:
+  project_id: <hub Project id>
+  key_path: ~/.config/marqov/<hub key file>
+repos:
+  project_id: <Project id for per-repository documents>
+protected_documents:
+  <document id>: <why it must never be written>
+retired_projects: [<Project id or prefix>]
+```
+
+API keys stay in their own files under `~/.config/marqov/`; never put a key
+in either file.
 
 Run directories hold unredacted security findings. Keep them out of this
 repository (they are git-ignored) and store them in the private runs

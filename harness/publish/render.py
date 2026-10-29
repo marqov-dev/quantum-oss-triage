@@ -54,14 +54,18 @@ def build(manifest: dict, findings: list[dict], scan_summary: dict, run_dir: Pat
                      "found_by": found, "confirmed_by": confirmed,
                      "scanners": sorted({d["tool"] for d in f["detection"]["detections"] if d["source"] == "scanner"}),
                      "location": f"{f['file']}:{f['line_start']}", "fix_branch": delivery.get("branch"),
-                     "fix_status": fx.get("status", "no fix proposed")})
+                     "fix_status": fx.get("status", "no fix proposed"),
+                     # Already raised upstream by the reviewer: say so, so it is not presented as new.
+                     "raised_before": sorted({u for p in f.get("prior_work") or [] for u in p["upstream"]})})
         diff = None
         if fx.get("status") in ("validated", "checked_same_model_only") and fx.get("diff_ref"):
             p = run_dir / fx["diff_ref"]
             diff = p.read_text() if p.exists() else None
         details.append({"id": f["id"], "title": f["title"], "what": f["claim"], "why": f["why_it_matters"],
                         "validation": f"{f['validation']['status']}: {f['validation']['notes']}",
-                        "fix_diff": diff, "fix_status": fx.get("status", "no fix proposed")})
+                        "fix_diff": diff, "fix_status": fx.get("status", "no fix proposed"),
+                        "fix_caveats": [c["text"] for c in fx.get("caveats") or []],
+                        "raised_before": sorted({u for p in f.get("prior_work") or [] for u in p["upstream"]})})
     used = [a for a in manifest["adapters"] if a.get("used")]
     scorecard = next((s for s in manifest["scanners"] if s["name"] == "scorecard"), None)
     return {
@@ -119,6 +123,10 @@ def to_markdown(r: dict) -> str:
         out += ["", f"### {d['id']} · {d['title']}", "", f"**What is wrong.** {d['what']}", "",
                 f"**Why it matters.** {d['why']}", "", f"**How it was checked.** {d['validation']}", "",
                 f"**Fix status.** {d['fix_status']}"]
+        if d.get("raised_before"):
+            out += ["", f"**Raised before.** {', '.join(d['raised_before'])}"]
+        for c in d.get("fix_caveats") or []:
+            out += ["", f"**Caveat on the fix.** {c}"]
         if d["fix_diff"]:
             out += ["", "```diff", d["fix_diff"].rstrip(), "```"]
     hp = r["how_produced"]

@@ -6,7 +6,7 @@ source snapshot at /src and a throwaway writable copy at /work, plus limits.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 MAX_OUTPUT_BYTES = 5 * 1024 * 1024
@@ -20,6 +20,7 @@ class WorkerResult:
     timed_out: bool = False
     truncated: bool = False
     duration_s: float = 0.0
+    proxy_log: list = field(default_factory=list)  # registry-only steps: each allow/deny decision
 
     @property
     def ok(self) -> bool:
@@ -40,3 +41,11 @@ class Worker:
         """Run a shell script. /src is the snapshot (read-only), /work a writable copy,
         /inputs an optional read-only directory of harness-provided files."""
         raise NotImplementedError
+
+    def with_deps(self, deps_dir: Path) -> "Worker":
+        """The same worker, with a repository's installed dependencies available."""
+        return self
+
+    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
+        """Run an install script with registry-only network access, writing to /deps."""
+        return WorkerResult(None, "", f"{self.name} worker cannot install dependencies")

@@ -171,7 +171,8 @@ def build_record(repo: str, commit: str, fid: str, g: list[dict], verifications:
     verifications = [{**v, "reason": secrets.redact(v.get("reason", ""))} for v in verifications]
     rep = representative(g)
     detections = [{
-        "source": "model" if c["tool"] in MODEL_TOOLS else "scanner", "tool": c["tool"],
+        "source": "model" if c["tool"] in MODEL_TOOLS else "prior_work" if c["tool"] == "prior-work" else "scanner",
+        "tool": c["tool"],
         "model_id": c.get("model_id"), "skill": c.get("skill"), "unit": c.get("unit", ""), "title": c["title"],
         "line_start": c["line_start"], "line_end": c["line_end"], "proposed_severity": c["proposed_severity"],
         "security_impact": bool(c.get("security_impact")), "rule_id": c.get("rule_id"),
@@ -201,6 +202,7 @@ def build_record(repo: str, commit: str, fid: str, g: list[dict], verifications:
         "disposition": {"queue": queue, "queue_reason": why, "decision": "pending", "decided_by": None,
                         "decided_at": None, "note": "", "duplicate_of": None},
         "fix": None,
+        **({"prior_work": [c["prior"] for c in g if c.get("prior")]} if any(c.get("prior") for c in g) else {}),
     }
 
 

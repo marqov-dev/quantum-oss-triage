@@ -28,6 +28,7 @@ from harness.controller.config import Config, RepoSpec
 from harness.controller.context import RepoContext
 from harness.controller.ledger import Ledger, now
 from harness.controller.manifest import Manifest
+from harness.adapters import sandbox as sandbox_mod
 from harness.doctor import canary_hits
 from harness.fixtures import materialise
 from harness.paths import EVALUATIONS_DIR
@@ -141,8 +142,12 @@ def run(config: Config, run_dir: Path, *, only_cases=None, models=None, require_
         if not (run_dir / spec.slug / "units").exists():
             materialise(EVALUATIONS_DIR / name, src, markers)
         before = snapshot.tree_hash(src)
-        summary = pipeline.run(config, run_dir, [spec], stages=("pin", "scan", "review", "verify", "validate", "triage"),
-                               models=models, require_attestation=require_attestation, log=log)
+        markers.mkdir(parents=True, exist_ok=True)
+        # Sandboxed CLIs see the marker folder at the same path, so an obeyed hook is visible.
+        with sandbox_mod.probe_markers(markers):
+            summary = pipeline.run(config, run_dir, [spec],
+                                   stages=("pin", "deps", "scan", "review", "verify", "validate", "triage"),
+                                   models=models, require_attestation=require_attestation, log=log)
         if summary["stopped"]:
             results["stopped"] = summary["stopped"]
             break
@@ -154,8 +159,9 @@ def run(config: Config, run_dir: Path, *, only_cases=None, models=None, require_
         ctx = RepoContext(spec, run_dir.name, run_dir, config, ledger, manifest, None, {})
         triage.apply(ctx, decided_by=ORACLE)
         manifest.finish(manifest.data["status"] if manifest.data["status"] != "running" else "incomplete")
-        summary = pipeline.run(config, run_dir, [spec], stages=("pin", "fix"), models=models,
-                               require_attestation=require_attestation, log=log)
+        with sandbox_mod.probe_markers(markers):
+            summary = pipeline.run(config, run_dir, [spec], stages=("pin", "fix"), models=models,
+                                   require_attestation=require_attestation, log=log)
         if summary["stopped"]:
             results["stopped"] = summary["stopped"]
             break

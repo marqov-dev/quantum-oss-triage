@@ -39,7 +39,9 @@ def run(ctx: RepoContext, candidates: list[dict]) -> list[dict]:
     def one(job):
         g, model, independence = job
         rep = merge.representative(g["candidates"])
-        source = "another AI reviewer" if rep["tool"] in merge.MODEL_TOOLS else f"the static analysis tool {rep['tool']}"
+        source = ("another AI reviewer" if rep["tool"] in merge.MODEL_TOOLS
+                  else "the reviewer's earlier notes (not yet checked against this commit)" if rep["tool"] == "prior-work"
+                  else f"the static analysis tool {rep['tool']}")
         prompt = prompts.verify(skill, ctx.spec.name, ctx.commit, rep, source)
         return job, ctx.call_model("verify", g["id"], model, "verify-finding", prompt, ctx.config.timeouts["verify_s"])
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import subprocess
+from pathlib import Path
 
 import yaml
 
@@ -25,6 +26,9 @@ def load_settings(path: str) -> dict:
 
 
 def git_revision() -> str:
-    """The commit of the installed source tree, for provenance records."""
-    out = subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True)
+    """The commit of the source checkout this package is imported from, for
+    provenance records. Raises CalledProcessError if it is not in a git checkout.
+    """
+    here = Path(__file__).resolve().parent
+    out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=here, check=True, capture_output=True, text=True)
     return out.stdout.strip()

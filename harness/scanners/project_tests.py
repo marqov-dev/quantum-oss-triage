@@ -8,9 +8,9 @@ from harness.scanners.base import ScanResult, Scanner, has_files
 class ProjectTests(Scanner):
     """The project's own test suite at this commit, offline, as a baseline.
 
-    v0.1 does not install dependencies (the registry-only network step is not
-    built yet), so suites that need packages beyond the worker image fail at
-    import and are reported as such.
+    Runs with the dependencies the deps stage installed (mounted read-only at
+    /deps). If they could not be installed, a suite that needs them fails at
+    import and is reported as such.
     """
 
     name = "project-tests"

@@ -53,7 +53,8 @@
           "type": "string",
           "enum": [
             "model",
-            "scanner"
+            "scanner",
+            "prior_work"
           ]
         },
         "tool": {
@@ -492,6 +493,41 @@
         "object",
         "null"
       ]
+    },
+    "prior_work": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "upstream"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "found",
+              "reported",
+              "fixed",
+              "rejected"
+            ]
+          },
+          "upstream": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

@@ -1,3 +1,4 @@
+import re
 import subprocess
 
 import pytest
@@ -68,5 +69,6 @@ def test_container_output_is_capped(tmp_path):
 def test_container_timeout_kills(tmp_path):
     r = DockerWorker().run("sleep 60", tmp_path, timeout_s=5)
     assert r.timed_out
-    left = subprocess.run(["docker", "ps", "-q", "--filter", "name=qot-"], capture_output=True, text=True).stdout
-    assert left.strip() == ""
+    # Worker containers only (qot-<12 hex>); a reviewer sandbox may be running alongside.
+    names = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True).stdout.split()
+    assert [n for n in names if re.fullmatch(r"qot-[0-9a-f]{12}", n)] == []

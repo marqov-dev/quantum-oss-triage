@@ -67,5 +67,11 @@ planted:
     area: security
     severity: high
     summary: pull_request_target workflow checks out and interpolates untrusted pull-request content
+  - id: P12
+    file: qtoy/provenance.py
+    lines: [8, 11]
+    area: correctness
+    severity: medium
+    summary: git_revision runs git with no cwd, so it reports the caller's repository, not the installed qtoy tree
 hygiene:
   lychee_broken_local_links: 1

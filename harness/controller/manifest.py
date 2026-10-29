@@ -10,7 +10,7 @@ from harness.controller import schema
 from harness.controller.ledger import now
 from harness.paths import REPO_ROOT
 
-STAGES = ("pin", "scan", "review", "verify", "validate", "triage", "fix", "publish")
+STAGES = ("pin", "deps", "scan", "review", "verify", "validate", "triage", "fix", "publish")
 
 
 def harness_revision() -> str:
@@ -50,7 +50,7 @@ class Manifest:
         if not any(f["unit"] == unit and f["error"] == error for f in self.data["failures"]):
             self.data["failures"].append({"unit": unit, "error": error[:1000]})
 
-    _PREFIXES = {"models": ("model ",), "pin": ("pin",), "scan": ("scanner ",), "review": ("review",),
+    _PREFIXES = {"models": ("model ",), "pin": ("pin",), "deps": ("dependencies",), "scan": ("scanner ",), "review": ("review",),
                  "verify": ("verification",), "validate": ("validate",)}
 
     def clear_notes(self, stage: str) -> None:

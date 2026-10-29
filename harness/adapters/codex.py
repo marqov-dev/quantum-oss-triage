@@ -1,8 +1,8 @@
 """OpenAI Codex CLI adapter: codex exec --json --output-schema, read-only sandbox.
 
-Not yet exercised against a real install (codex was not installed when this was
-written). Flags follow the Codex CLI docs; `qot doctor` must pass the hostile
-probe for the installed version before the pipeline uses it.
+Codex reads files with shell commands, so it runs in a reviewer sandbox
+(harness/adapters/sandbox.py) by default. Flags checked against
+`codex exec --help` for codex-cli 0.164.0.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from harness.adapters.base import Adapter, Invocation, Parsed, extract_json, model_schema
+from harness.adapters.sandbox import ReviewerSandbox
 from harness.controller import cleanenv
 
 
@@ -19,9 +20,16 @@ class CodexAdapter(Adapter):
     binary = "codex"
     max_timeout_s = 1800
     # Codex reads files with shell commands even under --sandbox read-only.
-    runs_shell_on_host = True
+    reads_with_shell = True
+
+    def __init__(self, model=None, binary=None, extra_args=None, sandbox: bool | dict = True):
+        super().__init__(model, binary, extra_args)
+        if sandbox:
+            self.sandbox = ReviewerSandbox("codex", **(sandbox if isinstance(sandbox, dict) else {}))
 
     def env(self) -> dict[str, str]:
+        if self.sandbox is not None:
+            return cleanenv.base_env()  # for the docker client; the container gets its own
         env = cleanenv.base_env(cleanenv.binary_dir(self.binary))
         env["CODEX_HOME"] = str(cleanenv.codex_home())
         return env
@@ -32,7 +40,9 @@ class CodexAdapter(Adapter):
         cmd = [self.resolved_binary() or self.binary, "exec", "--json",
                "--output-schema", str(schema_file), "-o", str(out_file),
                "--sandbox", "read-only", "--skip-git-repo-check", "-C", str(cwd),
-               "-c", "project_doc_max_bytes=0"]
+               "--ephemeral", "--ignore-rules", "-c", "project_doc_max_bytes=0"]
+        if self.sandbox is not None:
+            cmd.append("--strict-config")
         if self.model:
             cmd += ["-m", self.model]
         # Codex has no system-prompt flag; the harness text leads the prompt.

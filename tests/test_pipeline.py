@@ -92,6 +92,19 @@ def test_usage_limit_pauses_repo_and_resumes(tmp_path, repo, config, worker):
     assert len(resumed["claude"].calls) < len(limited["claude"].calls) + 3
 
 
+def test_units_refused_for_capacity_run_again_on_resume(tmp_path, repo, config, worker):
+    busy = {"claude": two_models()["claude"], "codex": FakeAdapter("codex", reproduction=REPRO, capacity_refused=True)}
+    s = pipeline.run(config, tmp_path / "run", [repo], adapters=busy, worker=worker, log=lambda *_: None)
+    assert not s["stopped"]  # not a usage limit: the run carries on
+    manifest = json.loads((tmp_path / "run" / "test__m" / "manifest.json").read_text())
+    assert any("at capacity" in f["error"] for f in manifest["failures"])
+    again = two_models()
+    pipeline.run(config, tmp_path / "run", [repo], adapters=again, worker=worker, log=lambda *_: None)
+    assert again["codex"].calls and again["claude"].calls == []  # only the refused units are repeated
+    manifest = json.loads((tmp_path / "run" / "test__m" / "manifest.json").read_text())
+    assert not any("at capacity" in f["error"] for f in manifest["failures"])
+
+
 def test_single_model_self_check_does_not_reach_main_queue(tmp_path, repo, config, worker):
     config.models = {"claude": {}}
     only = {"claude": FakeAdapter("claude", reviews={"review-correctness": [finding()]})}
@@ -131,11 +144,30 @@ def test_fix_only_after_acceptance(tmp_path, repo, config, worker):
                               "status": "awaiting explicit approval to publish", "pushed": False}
 
 
+def test_behaviour_change_objection_is_kept_as_a_caveat(tmp_path, repo, config, worker):
+    run_dir = tmp_path / "run"
+    pipeline.run(config, run_dir, [repo], adapters=two_models(), worker=worker, log=lambda *_: None)
+    d = run_dir / "test__m"
+    doc = yaml.safe_load((d / "decisions.yaml").read_text())
+    fid = next(iter(doc["findings"]))
+    doc["findings"][fid].update(decision="accept", severity="high")
+    (d / "decisions.yaml").write_text(yaml.safe_dump(doc))
+    wire = "Existing pickle-encoded results become unreadable."
+    objector = {"claude": two_models()["claude"],
+                "codex": FakeAdapter("codex", reproduction=REPRO, verdict="refute",
+                                     fix_assessment={"fixes_cause": "yes", "keeps_behaviour": "no",
+                                                     "regression_risk": wire})}
+    pipeline.run(config, run_dir, [repo], stages=("pin", "triage", "fix"), adapters=objector, worker=worker,
+                 log=lambda *_: None)
+    fx = json.loads((d / "findings.json").read_text())[0]["fix"]
+    assert fx["status"] == "pending_objections" and fx["caveats"] == [{"by": "codex", "text": wire}]
+
+
 def test_build_adapters_records_missing_and_unattested(tmp_path, monkeypatch):
     from harness.controller import cleanenv
 
     monkeypatch.setattr(cleanenv, "CONFIG_ROOT", tmp_path)
-    cfg = Config(models={"claude": {"binary": "definitely-missing-qot"}, "codex": {"binary": "definitely-missing-qot"}},
+    cfg = Config(models={"claude": {"binary": "definitely-missing-qot"}, "codex": {"sandbox": {"docker": "definitely-missing-qot"}}},
                  review_skills=[], worker={}, timeouts={})
     usable, rows = pipeline.build_adapters(cfg)
     assert usable == {}

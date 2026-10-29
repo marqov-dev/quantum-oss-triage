@@ -63,8 +63,9 @@ def render_triage(ctx: RepoContext, findings: list[dict]) -> str:
               "Refuted, single-source or unconfirmed claims. Skim; promote any you believe by deciding it.", "",
               "| ID | Title | Location | Proposed | Why low |", "| --- | --- | --- | --- | --- |"]
     for f in low:
+        prior = "; ".join(f"raised before ({p['id']}, {p['status']})" for p in f.get("prior_work") or [])
         lines.append(f"| {f['id']} | {f['title']} | {_loc(f)} | {merge.top_proposed_severity(f)} | "
-                     f"{f['disposition']['queue_reason']} |")
+                     f"{f['disposition']['queue_reason']}{'; ' + prior if prior else ''} |")
     lines += ["", "## Scanner hygiene counts", ""]
     for name, s in (ctx.read_json("scan-summary.json", {}) or {}).items():
         lines.append(f"- **{name}** ({s['status']}{', ' + s['version'] if s.get('version') else ''}): "
@@ -91,6 +92,9 @@ def _detail(f: dict) -> list[str]:
            f"**Why it matters.** {f['why_it_matters']}", ""]
     if f.get("applies_because"):
         out += [f"**Applies because.** {f['applies_because']}", ""]
+    for p in f.get("prior_work") or []:
+        out += [f"**Raised before by you ({p['id']}, {p['status']}).** "
+                + (", ".join(p["upstream"]) or "not upstream") + (f". {p['note']}" if p.get("note") else ""), ""]
     if f["corroboration"]["verifications"]:
         out += ["| Verifier | Independence | Verdict | Reason |", "| --- | --- | --- | --- |"]
         for v in f["corroboration"]["verifications"]:

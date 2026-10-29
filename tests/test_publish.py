@@ -1,6 +1,7 @@
 import ast
 import copy
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -140,3 +141,25 @@ def test_three_parts_stay_separate():
 def test_marqov_key_is_referenced_only_by_the_publisher():
     hits = [p for p in (REPO_ROOT / "harness").rglob("*.py") if "api-key" in p.read_text()]
     assert [p.relative_to(REPO_ROOT).as_posix() for p in hits] == ["harness/publish/marqov.py"]
+
+
+def test_publish_is_a_dry_run_by_default_and_never_reads_the_key(findings, tmp_path):
+    _write_run(tmp_path, findings)
+    home = tmp_path / "home-without-key"
+    home.mkdir()
+    env = {"PATH": os.environ["PATH"], "HOME": str(home)}
+    p = subprocess.run([sys.executable, "-m", "harness.publish", str(tmp_path / "run"), "--public-summary"],
+                       capture_output=True, text=True, cwd=REPO_ROOT, env=env)
+    assert p.returncode == 0, p.stdout + p.stderr
+    out = json.loads(p.stdout)[-1]["marqov"]
+    assert out["dry_run"] is True
+    titles = [d["title"] for d in out["would_upload"]]
+    assert titles == ["org/repo: run record", "org/repo: review", "Round one: overview", "Round one: public summary"]
+    assert all(d["gate"] == "passed" for d in out["would_upload"])
+    assert [d["target"] for d in out["would_upload"]] == ["repo", "repo", "hub", "hub"]
+    assert out["live_blocked_by"]  # no Project ids are configured in the repository
+    assert not (tmp_path / "run" / "outbox" / "marqov-published.json").exists()
+    # --live with no key file refuses, uploads nothing.
+    p = subprocess.run([sys.executable, "-m", "harness.publish", str(tmp_path / "run"), "--live"],
+                       capture_output=True, text=True, cwd=REPO_ROOT, env=env)
+    assert p.returncode == 1 and "no Project configured" in p.stdout

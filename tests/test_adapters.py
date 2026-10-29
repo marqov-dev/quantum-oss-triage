@@ -124,9 +124,9 @@ def test_codex_command_is_read_only_with_schema(tmp_path, monkeypatch):
     assert "mcp_servers" in (home / "config.toml").read_text()
 
 
-def test_antigravity_command_and_hard_timeout():
+def test_antigravity_command_and_hard_timeout(tmp_path):
     a = AntigravityAdapter(binary="agy")
-    cmd = a.build_command("p", "s", "verdict", Path("."), Path("o"))
+    cmd = a.build_command("p", "s", "verdict", tmp_path, tmp_path / "o")
     for flag in ("--output-format", "--mode", "--sandbox", "--print-timeout"):
         assert flag in cmd
     assert cmd[cmd.index("--mode") + 1] == "plan"

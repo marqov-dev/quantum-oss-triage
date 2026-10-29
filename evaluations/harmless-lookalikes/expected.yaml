@@ -3,12 +3,12 @@ case: harmless-lookalikes
 harmless:
   - id: H1
     file: qsafe/config.py
-    lines: [11, 20]
+    lines: [12, 21]
     summary: ast.literal_eval on a settings string
   - id: H2
     file: qsafe/config.py
-    lines: [27, 30]
-    summary: subprocess.run with a fixed argument list and no shell
+    lines: [28, 34]
+    summary: subprocess.run with a fixed argument list, no shell, and cwd set to the package's own directory
   - id: H3
     file: qsafe/cache.py
     lines: [14, 16]

@@ -10,10 +10,15 @@ models:
     # you have signed in there (see docs/SETUP.md); otherwise the default
     # config dir plus the isolation flags.
     config_dir: auto
+  # Codex and Antigravity read files with shell commands, so they run in a
+  # reviewer sandbox: one container per CLI holding the read-only review copy
+  # and that CLI's sign-in only (qot sandbox-build, qot sandbox-login).
   codex:
-    model: null
+    model: gpt-6-astra
+    sandbox: true
   antigravity:
     model: null
+    sandbox: true
 
 review_skills: [review-security, review-correctness, review-docs, review-quantum]
 
@@ -33,11 +38,43 @@ parallel: 2
 # Refuse to run a CLI version that has not passed `qot doctor`'s hostile probe.
 require_isolation_attestation: true
 
-# Codex and Antigravity read files by running shell commands on the host, so
-# text in a repository could get its code executed outside a worker. They are
-# refused until they run in a reviewer sandbox. Do not turn this on for real
-# third-party repositories.
+# Only matters for a CLI configured with `sandbox: false`: Codex and
+# Antigravity would then read files by running shell commands on the host, so
+# text in a repository could get its code executed outside a worker. Do not
+# turn this on for real third-party repositories.
 allow_host_shell_adapters: false
 
 reviewer: David Ryan
 fix_branch_prefix: review/2026-10/
+
+# Where `qot publish --live` writes. Two separate targets, each with its own
+# Project and API key file (outside the repository; never put a key here):
+# - hub: "Round one: overview" and "Round one: public summary", counts only.
+#   The hub Project may be visible to a wider collaborators team.
+# - repos: each repository's run record and review, which can include
+#   security rows. Never the hub Project (the publisher refuses that). Use
+#   one Project for all, or per_repo to give a repository its own.
+# A live run refuses to start until every target it needs has a project_id.
+publish:
+  marqov:
+    base_url: https://app.marqov.ai
+    # Project and document ids are not kept in this public repository. Put
+    # them in ~/.config/quantum-oss-triage/marqov-targets.yaml (same keys as
+    # below), which is laid over this block; see docs/SETUP.md.
+    hub:
+      project_id: null
+      key_path: ~/.config/marqov/api-key
+      # Per-repository security and advisory counts in the hub documents.
+      # Off until it is decided when they may be shown.
+      show_security_counts: false
+    repos:
+      project_id: null
+      key_path: ~/.config/marqov/api-key
+      per_repo: {}
+      # true lets per-repository documents use the hub Project. Live publishing
+      # then also requires the hub's team to have exactly one member.
+      allow_hub: false
+    # Documents the publisher must never edit or overwrite.
+    protected_documents: {}
+    # Projects (ids or id prefixes) never to publish to.
+    retired_projects: []

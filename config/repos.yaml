@@ -1,10 +1,58 @@
-# Repositories to review, in priority order. The round-one shortlist has not
-# been chosen yet; until it is, run only the evaluation set (qot evaluate).
+# Repositories to review, in priority order. Each is cloned from its upstream
+# and pinned to a commit SHA at stage 1; ref is the branch to pin from.
+#
+# Round one (chosen 2026-10-29). Do not run until the round is approved.
 #
 # - name: org/repo
 #   source: https://github.com/org/repo.git
-#   ref: main            # pinned to a commit SHA at stage 1
+#   ref: main
 #   scope:
 #     include: ["src/pkg"]
 #     exclude: ["docs/_build"]
-repos: []
+repos:
+  - name: unitaryfoundation/ucc
+    source: https://github.com/unitaryfoundation/ucc.git
+    ref: main
+  - name: qutip/qutip
+    source: https://github.com/qutip/qutip.git
+    ref: master
+  - name: unitaryfoundation/metriq-gym
+    source: https://github.com/unitaryfoundation/metriq-gym.git
+    ref: main
+  - name: unitaryfoundation/mitiq
+    source: https://github.com/unitaryfoundation/mitiq.git
+    ref: main
+  # Rust
+  - name: unitaryfoundation/jeff
+    source: https://github.com/unitaryfoundation/jeff.git
+    ref: main
+  # C++
+  - name: unitaryfoundation/qrack
+    source: https://github.com/unitaryfoundation/qrack.git
+    ref: main
+  # C++
+  - name: unitaryfoundation/clifft
+    source: https://github.com/unitaryfoundation/clifft.git
+    ref: main
+  # large: one review unit per skill and model cannot cover it all; consider a scope
+  - name: PennyLaneAI/pennylane
+    source: https://github.com/PennyLaneAI/pennylane.git
+    ref: main
+  - name: PsiQ/bartiq
+    source: https://github.com/PsiQ/bartiq.git
+    ref: main
+  # meta-package for PsiQuantum's QDK (notebooks and packaging, no library code)
+  - name: PsiQ/psiqdk
+    source: https://github.com/PsiQ/psiqdk.git
+    ref: main
+  # Rust
+  - name: qiskit-community/qrmi
+    source: https://github.com/qiskit-community/qrmi.git
+    ref: main
+  - name: jcmgray/quimb
+    source: https://github.com/jcmgray/quimb.git
+    ref: main
+  # default branch is new_architecture
+  - name: PCSS-Quantum/open-qbench
+    source: https://github.com/PCSS-Quantum/open-qbench.git
+    ref: new_architecture

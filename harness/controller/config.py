@@ -39,6 +39,8 @@ class Config:
     fix_branch_prefix: str = "review/2026-10/"
     # Off by default: see Adapter.runs_shell_on_host and docs/METHOD.md.
     allow_host_shell_adapters: bool = False
+    # Read by the publisher process itself (harness/publish), not the controller.
+    publish: dict = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Config":

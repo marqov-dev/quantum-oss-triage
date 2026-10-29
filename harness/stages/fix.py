@@ -27,7 +27,8 @@ def worker_script(has_repro: bool) -> str:
          ">/tmp/a.txt 2>&1; rc=$?; echo QOT_APPLY_RC=$rc; cat /tmp/a.txt; [ $rc -eq 0 ] || exit 0; ")
     if has_repro:
         s += f"{_PYTEST} /inputs/test_qot_repro.py >/tmp/r.txt 2>&1; echo QOT_REPRO_RC=$?; tail -n 30 /tmp/r.txt; "
-    s += (f"if ls tests test >/dev/null 2>&1 || ls test_*.py >/dev/null 2>&1; then {_PYTEST} >/tmp/t.txt 2>&1; "
+    # `ls tests test` fails when either folder is missing, so test each one.
+    s += (f"if [ -d tests ] || [ -d test ] || ls test_*.py >/dev/null 2>&1; then {_PYTEST} >/tmp/t.txt 2>&1; "
           "echo QOT_TESTS_RC=$?; tail -n 1 /tmp/t.txt | sed 's/^/QOT_TESTS_SUMMARY=/'; else echo QOT_TESTS_RC=none; fi")
     return s
 
@@ -161,6 +162,12 @@ def fix_one(ctx: RepoContext, f: dict) -> dict:
                         "fix_assessment": rc.payload.get("fix_assessment") if rc.ok else None})
 
     independent = [r for r in reviews if r["independence"] == "independent"]
+    # A reviewer who agrees the fix removes the cause but says it changes
+    # behaviour (pickle -> JSON changes the wire format) leaves a caveat that
+    # travels with the fix, whatever its status.
+    caveats = [{"by": r["verifier"], "text": r["fix_assessment"].get("regression_risk") or r["reason"]}
+               for r in reviews if (r.get("fix_assessment") or {}).get("fixes_cause") == "yes"
+               and r["fix_assessment"].get("keeps_behaviour") != "yes"]
     objections = [r for r in reviews if r["verdict"] in ("refute", "unsure", "failed")]
     if not worker_ok:
         status = "pending"
@@ -186,7 +193,7 @@ def fix_one(ctx: RepoContext, f: dict) -> dict:
             p.write_text(stored)
     rec = {"status": status, "proposer": proposer, "diff_redacted": stored != prop["diff"], "proposer_model_id": call.model_id, "summary": prop["summary"],
            "files_changed": prop["files_changed"], "diff_ref": str((fix_dir / "fix.diff").relative_to(ctx.run_dir)),
-           "worker_check": check, "reviews": reviews}
+           "worker_check": check, "reviews": reviews, "caveats": caveats}
     if sensitive:
         patch = ctx.repo_dir / "evidence" / "patches" / f"{f['id']}.patch"
         patch.parent.mkdir(parents=True, exist_ok=True)

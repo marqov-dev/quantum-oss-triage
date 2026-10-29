@@ -17,6 +17,7 @@ in the checking, ranking and evidence that make the output safe to act on.
 | `harness/` | The Python harness: `controller/` (scheduling, schema checks, evidence), `adapters/` (Claude Code, Codex, Antigravity), `workers/` (disposable containers), `scanners/` (fixed, non-AI tools), `stages/`, `publish/`. |
 | `evaluations/` | The evaluation set: planted bugs, harmless code that looks suspicious, and a hostile repository. |
 | `docker/worker.Dockerfile` | The credential-free worker image. |
+| `docker/reviewer.Dockerfile` | The reviewer sandbox images for Codex and Antigravity, which read files with shell commands. |
 | `docs/` | [METHOD](docs/METHOD.md), [DISCLOSURE](docs/DISCLOSURE.md), [SETUP](docs/SETUP.md), [CONTRIBUTING](docs/CONTRIBUTING.md). |
 
 If you only want the review instructions, copy `skills/` into your own tool's
@@ -30,6 +31,8 @@ comparable and checkable.
 ```bash
 uv sync
 docker build -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev .
+uv run qot sandbox-build     # reviewer sandboxes for Codex and Antigravity
+uv run qot sandbox-login agy # sign a CLI in inside its sandbox (once)
 uv run qot doctor            # checks the worker and each installed CLI's isolation
 uv run qot evaluate          # the full pipeline on the evaluation set
 uv run pytest                # the harness's own tests
@@ -37,7 +40,8 @@ uv run pytest                # the harness's own tests
 
 `qot run` reviews the repositories listed in `config/repos.yaml`. Decisions go
 in each repository's `decisions.yaml`. `qot triage-apply` records them, and
-`qot publish` renders the reports. See [docs/SETUP.md](docs/SETUP.md).
+`qot publish` renders the reports (a dry run unless given `--live`). See
+[docs/SETUP.md](docs/SETUP.md).
 
 ## Status
 

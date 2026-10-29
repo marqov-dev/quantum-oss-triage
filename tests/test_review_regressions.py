@@ -33,10 +33,12 @@ def test_shell_on_host_adapters_are_refused(tmp_path, monkeypatch):
     fake = tmp_path / "codex"
     fake.write_text("#!/bin/sh\necho codex 1.0\n")
     fake.chmod(0o755)
-    cfg = Config(models={"codex": {"binary": str(fake)}}, review_skills=[], worker={}, timeouts={})
+    cfg = Config(models={"codex": {"binary": str(fake), "sandbox": False}}, review_skills=[], worker={}, timeouts={})
     usable, rows = pipeline.build_adapters(cfg, require_attestation=False)
     assert usable == {} and "runs shell commands on the host" in rows[0]["reason"]
-    assert CodexAdapter.runs_shell_on_host and not ClaudeAdapter.runs_shell_on_host
+    assert CodexAdapter(sandbox=False).runs_shell_on_host and not ClaudeAdapter().runs_shell_on_host
+    # The default is the reviewer sandbox, which is not "on the host".
+    assert not CodexAdapter().runs_shell_on_host
 
 
 def test_bandit_password_text_is_redacted():
@@ -106,3 +108,15 @@ def test_stored_units_redact_secrets_without_breaking_json(tmp_path):
     text = u.path.read_text()
     assert "7Hq2" not in text
     assert json.loads(text)["payload"]["evidence"] == 'DEFAULT_TOKEN = "REDACTED"'
+
+
+def test_fix_check_runs_existing_tests_when_only_tests_folder_exists(tmp_path):
+    import subprocess
+
+    from harness.stages.fix import worker_script
+
+    (tmp_path / "tests").mkdir()
+    script = worker_script(False).split("; ", 0)[0]
+    probe = script[script.index("if [ -d tests ]"):].replace("python -m pytest", "echo RAN #")
+    out = subprocess.run(["sh", "-c", probe], cwd=tmp_path, capture_output=True, text=True).stdout
+    assert "QOT_TESTS_RC=none" not in out
