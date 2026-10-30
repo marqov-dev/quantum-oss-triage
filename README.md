@@ -1,12 +1,30 @@
 # quantum-oss-triage
 
-An open method and harness for multi-model AI review of open-source quantum
-computing repositories. Several AI models review a repository independently,
-check each other's claims, and hand a ranked, evidenced list to a person, who
+This project aims to create an open method and harness for multi-model AI review of open-source quantum computing repositories. 
+
+The process uses a mixture of sandboxed deterministic review cycles, and then patches in several AI models to review a repository independently,
+check each other's claims, and hand a ranked, evidenced list to a real human, who
 checks every finding before anything reaches a maintainer.
 
-The value is not in running the AI. Maintainers can do that themselves. It is
-in the checking, ranking and evidence that make the output safe to act on.
+The value is not in running the AI alone. Maintainers can do that themselves. It is
+in the systematic approach, and in reviewing and auditing that make the output safe to act on.
+
+While this project is spun out of an internal effort at [Marqov](https://marqov.ai), and currently uses the Marqov Platform's hosted Projects feature to store and privately disseminate the review findings, this is not a breaking requirement for anyone looking to fork and iterate the project. Likewise the first cohort of candidate open source projects are primarily from our community at the [Unitary Foundation](https://unitary.foundation), where I am a Fellow, but will expand to cover as many of the core quantum projects as possible. If you would like your project added, drop me a line via the [contact form](https://marqov.ai/contact).
+
+## Projects in round one
+
+| Organisation | Repositories |
+| --- | --- |
+| Unitary Foundation | [ucc](https://github.com/unitaryfoundation/ucc), [metriq-gym](https://github.com/unitaryfoundation/metriq-gym), [mitiq](https://github.com/unitaryfoundation/mitiq), [jeff](https://github.com/unitaryfoundation/jeff), [qrack](https://github.com/unitaryfoundation/qrack), [clifft](https://github.com/unitaryfoundation/clifft) |
+| QuTiP | [qutip](https://github.com/qutip/qutip) |
+| Xanadu | [pennylane](https://github.com/PennyLaneAI/pennylane) |
+| PsiQuantum | [bartiq](https://github.com/PsiQ/bartiq), [psiqdk](https://github.com/PsiQ/psiqdk) |
+| Qiskit Community | [qrmi](https://github.com/qiskit-community/qrmi) |
+| Independent | [quimb](https://github.com/jcmgray/quimb) |
+| PCSS | [open-qbench](https://github.com/PCSS-Quantum/open-qbench) |
+
+The list lives in `config/repos.yaml`. Listing a project means it is in scope
+for review, not that its maintainers are involved or have endorsed the work.
 
 ## What is here
 
@@ -42,6 +60,18 @@ uv run pytest                # the harness's own tests
 in each repository's `decisions.yaml`. `qot triage-apply` records them, and
 `qot publish` renders the reports (a dry run unless given `--live`). See
 [docs/SETUP.md](docs/SETUP.md).
+
+## How the models are accessed
+
+The harness runs each provider's command-line tool (`claude`, `codex`, `agy`)
+directly, so the desktop apps do not need to be open. Docker does need to be
+running. Each tool uses a sign-in you make once, and round one uses personal
+subscriptions, not API keys. The harness removes API keys from the environment
+the tools run in, and a run pauses when a provider reports a usage limit.
+
+A paid overage setting on your account could still bill you past a limit, so
+check it with each provider, along with their terms on scripted use of a
+personal plan. See [docs/SETUP.md](docs/SETUP.md).
 
 ## Status
 

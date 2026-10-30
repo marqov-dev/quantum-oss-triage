@@ -31,6 +31,8 @@ def run(ctx: RepoContext) -> list[dict]:
         if not worker_ok and s.name != "scorecard":
             r = ScanResult(s.name, "unavailable", note=f"worker unavailable: {why}")
         else:
+            if s.name == "project-tests" and ctx.spec.tests_timeout_s:
+                s.timeout_s = int(ctx.spec.tests_timeout_s)
             ctx.log(f"  scan {s.name} ...")
             r = s.run(ctx.worker, ctx.source_dir, versions)
         # Raw output lives in the private evidence store; the unit keeps the summary.

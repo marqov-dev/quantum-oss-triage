@@ -9,6 +9,8 @@
 #   scope:
 #     include: ["src/pkg"]
 #     exclude: ["docs/_build"]
+#   tests:
+#     timeout_s: 3600    # the project's own suite, if 20 minutes is too short
 repos:
   - name: unitaryfoundation/ucc
     source: https://github.com/unitaryfoundation/ucc.git
@@ -52,6 +54,9 @@ repos:
   - name: jcmgray/quimb
     source: https://github.com/jcmgray/quimb.git
     ref: main
+    # Its suite takes about an hour on 2 CPUs (9162 tests).
+    tests:
+      timeout_s: 5400
   # default branch is new_architecture
   - name: PCSS-Quantum/open-qbench
     source: https://github.com/PCSS-Quantum/open-qbench.git

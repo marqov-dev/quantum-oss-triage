@@ -49,3 +49,14 @@ class Worker:
     def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
         """Run an install script with registry-only network access, writing to /deps."""
         return WorkerResult(None, "", f"{self.name} worker cannot install dependencies")
+
+
+def venv_installed(deps_dir) -> bool:
+    """Whether the dependency stage left a virtual environment in deps_dir.
+
+    Checked on the host, where venv/bin/python is a symlink to the worker's
+    own interpreter (a container path), so it must not be followed.
+    """
+    venv = Path(deps_dir) / "venv"
+    python = venv / "bin" / "python"
+    return (venv / "pyvenv.cfg").is_file() and (python.is_symlink() or python.is_file())

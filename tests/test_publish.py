@@ -76,7 +76,7 @@ def test_redact_blocks_leaks(findings):
     assert redact.check(f"Title: {sec['title']}", [sec])
     assert redact.check('token = "qtk_live_7Hq2Vx9Lm4Rt8Wz1Np6Ks3Df5Gb0Jc2Ye"', [])
     assert redact.check("an RCE via crafted payload", [])
-    assert redact.check("contact someone@example.com", [])
+    assert redact.check("contact someone@qtoy-labs.io", [])
     assert redact.check("pkg/remote.py:3 has a docs typo", [sec]) == []  # same file, different finding
 
 
@@ -163,3 +163,12 @@ def test_publish_is_a_dry_run_by_default_and_never_reads_the_key(findings, tmp_p
     p = subprocess.run([sys.executable, "-m", "harness.publish", str(tmp_path / "run"), "--live"],
                        capture_output=True, text=True, cwd=REPO_ROOT, env=env)
     assert p.returncode == 1 and "no Project configured" in p.stdout
+
+
+@pytest.mark.parametrize("addr,blocked", [
+    ("test@example.com", False), ("ci@build.example.org", False), ("t@example.invalid", False),
+    ("dev@ci.test", False), ("maintainer@gmail.com", True), ("a@example.com.evil.io", True),
+    ("someone@notexample.com", True),
+])
+def test_reserved_example_addresses_do_not_block(addr, blocked):
+    assert bool(redact.check(f"git config user.email {addr}", [])) is blocked
