@@ -169,8 +169,8 @@ def test_a_broken_lock_is_ignored(tmp_path):
 
 def test_registries_are_named_and_unknown_ones_refused():
     assert DockerWorker().registry_hosts() == ("pypi.org", "files.pythonhosted.org")
-    hosts = DockerWorker(registries=("pypi", "crates")).registry_hosts()
-    assert "static.crates.io" in hosts and "github.com" not in hosts
+    assert DockerWorker(registries=("pypi", "crates")).registry_hosts() == (
+        "pypi.org", "files.pythonhosted.org", "index.crates.io", "static.crates.io", "crates.io")
     with pytest.raises(ValueError):
         DockerWorker(registries=("pypi", "github"))
 
