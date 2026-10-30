@@ -43,6 +43,18 @@ in each repository's `decisions.yaml`. `qot triage-apply` records them, and
 `qot publish` renders the reports (a dry run unless given `--live`). See
 [docs/SETUP.md](docs/SETUP.md).
 
+## How the models are accessed
+
+The harness runs each provider's command-line tool (`claude`, `codex`, `agy`)
+directly, so the desktop apps do not need to be open. Docker does need to be
+running. Each tool uses a sign-in you make once, and round one uses personal
+subscriptions, not API keys. The harness removes API keys from the environment
+the tools run in, and a run pauses when a provider reports a usage limit.
+
+A paid overage setting on your account could still bill you past a limit, so
+check it with each provider, along with their terms on scripted use of a
+personal plan. See [docs/SETUP.md](docs/SETUP.md).
+
 ## Status
 
 Version 0.1, built for round one. See [docs/METHOD.md](docs/METHOD.md#status-of-v01)
