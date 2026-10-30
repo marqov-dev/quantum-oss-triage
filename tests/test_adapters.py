@@ -156,3 +156,27 @@ def test_extract_json_variants():
     assert extract_json('text\n```json\n{"a": 2}\n```\n') == {"a": 2}
     assert extract_json('prefix {"a": 3} suffix') == {"a": 3}
     assert extract_json("nothing") is None
+
+
+def test_model_and_effort_reach_each_cli(tmp_path, monkeypatch):
+    monkeypatch.setattr(cleanenv, "CONFIG_ROOT", tmp_path / "cfg")
+    cmd = ClaudeAdapter(binary="claude", config_dir="default", model="claude-opus-5-5", effort="medium").build_command(
+        "p", "s", "verdict", tmp_path, tmp_path / "o")
+    assert cmd[cmd.index("--model") + 1] == "claude-opus-5-5" and cmd[cmd.index("--effort") + 1] == "medium"
+    cmd = CodexAdapter(binary="codex", model="gpt-6.1-sol", effort="medium").build_command(
+        "p", "s", "verdict", tmp_path, tmp_path / "o.json")
+    assert cmd[cmd.index("-m") + 1] == "gpt-6.1-sol"
+    assert 'model_reasoning_effort="medium"' in cmd
+    cmd = AntigravityAdapter(binary="agy", model="gemini-3.8-flash-medium").build_command(
+        "p", "s", "verdict", tmp_path, tmp_path / "o")
+    assert cmd[cmd.index("--model") + 1] == "gemini-3.8-flash-medium"
+    with pytest.raises(ValueError):
+        AntigravityAdapter(model="gemini-3.8-flash", effort="medium")
+
+
+def test_shipped_config_pins_a_model_for_every_cli():
+    import yaml
+    models = yaml.safe_load((Path(__file__).parents[1] / "config" / "harness.yaml").read_text())["models"]
+    assert set(models) == {"claude", "codex", "antigravity"}
+    assert all((cfg or {}).get("model") for cfg in models.values()), models
+    assert models["antigravity"]["model"].startswith("gemini-")

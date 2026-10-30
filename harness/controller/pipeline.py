@@ -43,7 +43,8 @@ def build_adapters(config: Config, only: list[str] | None = None, require_attest
         elif ok and require and not verified:
             ok, reason = False, f"isolation not verified for {version!r}; run `qot doctor`"
         rows.append({"name": name, "available": ok, "reason": reason if not ok else (mode or "ok"), "version": version,
-                     "model_ids": [], "isolation_verified": verified, "used": ok, "configured_model": a.model})
+                     "model_ids": [], "isolation_verified": verified, "used": ok, "configured_model": a.model,
+                     "configured_effort": a.effort})
         if ok:
             usable[name] = a
     return usable, rows

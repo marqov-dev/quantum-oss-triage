@@ -29,7 +29,10 @@ class AntigravityAdapter(Adapter):
     max_timeout_s = HARD_TIMEOUT_S
     reads_with_shell = True
 
-    def __init__(self, model=None, binary=None, extra_args=None, sandbox: bool | dict = True):
+    def __init__(self, model=None, binary=None, extra_args=None, sandbox: bool | dict = True, effort=None):
+        # agy has no effort flag: the level is part of the model name (gemini-3.8-flash-medium).
+        if effort:
+            raise ValueError("antigravity: put the effort level in the model name, e.g. gemini-3.8-flash-medium")
         super().__init__(model, binary, extra_args)
         if sandbox:
             self.sandbox = ReviewerSandbox("agy", **(sandbox if isinstance(sandbox, dict) else {}))

@@ -61,6 +61,8 @@ class ClaudeAdapter(Adapter):
                "--system-prompt", system, "--json-schema", json.dumps(model_schema(schema_name)), *ISOLATION_FLAGS]
         if self.model:
             cmd += ["--model", self.model]
+        if self.effort:
+            cmd += ["--effort", self.effort]
         return cmd + self.extra_args
 
     def parse(self, inv: Invocation) -> Parsed:

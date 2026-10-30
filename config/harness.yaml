@@ -1,11 +1,14 @@
 # Harness configuration. No credentials go in this file or anywhere in the repository.
 
 # Order matters: the first available model proposes fixes; the others verify.
-# Each provider's strongest generally available model; the exact model ID the
-# CLI reports is recorded in manifest.json.
+# The exact model ID each CLI reports is recorded in manifest.json.
 models:
+  # Pin an exact model and effort for every CLI, so each run records what
+  # reviewed the code. Mid-tier on purpose: top models burn subscription
+  # limits fast (Gemini 4 Argon's weekly limit ran out on round one).
   claude:
-    model: opus
+    model: claude-opus-5-5
+    effort: medium
     # "auto" uses ~/.config/quantum-oss-triage/claude as CLAUDE_CONFIG_DIR once
     # you have signed in there (see docs/SETUP.md); otherwise the default
     # config dir plus the isolation flags.
@@ -14,10 +17,13 @@ models:
   # reviewer sandbox: one container per CLI holding the read-only review copy
   # and that CLI's sign-in only (qot sandbox-build, qot sandbox-login).
   codex:
-    model: gpt-6-astra
+    model: gpt-6.1-sol
+    effort: medium
     sandbox: true
   antigravity:
-    model: null
+    # agy also serves Claude and GPT models; name a Gemini one explicitly.
+    # Its effort level is part of the model name.
+    model: gemini-3.8-flash-medium
     sandbox: true
 
 review_skills: [review-security, review-correctness, review-docs, review-quantum]

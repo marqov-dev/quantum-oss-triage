@@ -22,8 +22,8 @@ class CodexAdapter(Adapter):
     # Codex reads files with shell commands even under --sandbox read-only.
     reads_with_shell = True
 
-    def __init__(self, model=None, binary=None, extra_args=None, sandbox: bool | dict = True):
-        super().__init__(model, binary, extra_args)
+    def __init__(self, model=None, binary=None, extra_args=None, sandbox: bool | dict = True, effort=None):
+        super().__init__(model, binary, extra_args, effort)
         if sandbox:
             self.sandbox = ReviewerSandbox("codex", **(sandbox if isinstance(sandbox, dict) else {}))
 
@@ -45,6 +45,8 @@ class CodexAdapter(Adapter):
             cmd.append("--strict-config")
         if self.model:
             cmd += ["-m", self.model]
+        if self.effort:
+            cmd += ["-c", f'model_reasoning_effort="{self.effort}"']
         # Codex has no system-prompt flag; the harness text leads the prompt.
         return cmd + self.extra_args + [f"{system}\n\n{prompt}"]
 

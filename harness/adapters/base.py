@@ -116,8 +116,10 @@ class Adapter:
     reads_with_shell: bool = False
     sandbox = None  # a ReviewerSandbox, for CLIs that read with shell commands
 
-    def __init__(self, model: str | None = None, binary: str | None = None, extra_args: list[str] | None = None):
+    def __init__(self, model: str | None = None, binary: str | None = None, extra_args: list[str] | None = None,
+                 effort: str | None = None):
         self.model = model
+        self.effort = effort
         if binary:
             self.binary = binary
         self.extra_args = extra_args or []
