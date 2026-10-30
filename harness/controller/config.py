@@ -15,6 +15,7 @@ class RepoSpec:
     ref: str | None = None
     include: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
+    tests_timeout_s: int | None = None   # the project's own suite, when the default is too short
 
     @property
     def slug(self) -> str:
@@ -23,8 +24,9 @@ class RepoSpec:
     @classmethod
     def from_dict(cls, d: dict) -> "RepoSpec":
         scope = d.get("scope") or {}
+        tests = d.get("tests") or {}
         return cls(d["name"], str(d["source"]), d.get("ref"), list(scope.get("include") or []),
-                   list(scope.get("exclude") or []))
+                   list(scope.get("exclude") or []), tests.get("timeout_s"))
 
 
 @dataclass

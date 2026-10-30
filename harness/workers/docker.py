@@ -10,12 +10,17 @@ import time
 import uuid
 from pathlib import Path
 
-from harness.workers.base import MAX_OUTPUT_BYTES, Worker, WorkerResult
+from harness.workers.base import MAX_OUTPUT_BYTES, Worker, WorkerResult, venv_installed
 
 DEFAULT_IMAGE = "quantum-oss-triage-worker:dev"
 PROXY_SCRIPT = Path(__file__).resolve().parents[2] / "docker" / "registry-proxy.py"
 # The package registries the dependency step may reach, and nothing else.
-REGISTRY_HOSTS = ("pypi.org", "files.pythonhosted.org")
+# Package registries the dependency stage may reach, by name. Only these hosts,
+# only HTTPS; which ones a run uses is set by worker.registries in the config.
+REGISTRIES = {
+    "pypi": ("pypi.org", "files.pythonhosted.org"),
+    "crates": ("index.crates.io", "static.crates.io", "crates.io"),  # Rust crates for maturin builds
+}
 PROXY_PORT = 3128
 
 # The wrapper runs inside the container. Output goes to size-limited tmpfs
@@ -38,14 +43,19 @@ class DockerWorker(Worker):
     name = "docker"
 
     def __init__(self, image: str = DEFAULT_IMAGE, cpus: str = "2", memory: str = "2g", pids: int = 256,
-                 work_size: str = "1g", tmp_size: str = "512m", docker: str = "docker"):
+                 work_size: str = "1g", tmp_size: str = "512m", docker: str = "docker",
+                 registries: tuple[str, ...] = ("pypi",)):
+        unknown = [r for r in registries if r not in REGISTRIES]
+        if unknown:
+            raise ValueError(f"unknown registries {unknown}; known: {sorted(REGISTRIES)}")
+        self.registries = tuple(registries)
         self.image, self.cpus, self.memory, self.pids = image, cpus, memory, pids
         self.work_size, self.tmp_size, self.docker = work_size, tmp_size, docker
         self.deps_dir: Path | None = None
 
     def with_deps(self, deps_dir: Path) -> "DockerWorker":
         w = copy.copy(self)
-        w.deps_dir = Path(deps_dir) if (Path(deps_dir) / "venv" / "bin" / "python").exists() else None
+        w.deps_dir = Path(deps_dir) if venv_installed(deps_dir) else None
         return w
 
     def available(self) -> tuple[bool, str]:
@@ -92,13 +102,18 @@ class DockerWorker(Worker):
                     "-e", f"PYTHONPATH={root}/src:{root}", "-e", "PYTHONDONTWRITEBYTECODE=1"]
         return cmd + [self.image, "sh", "-c", wrapper]
 
+    def registry_hosts(self) -> tuple[str, ...]:
+        return tuple(h for r in self.registries for h in REGISTRIES[r])
+
     def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
         """Run `script` with network access to the package registry only.
 
         The install container joins an internal network with no route out; a
         proxy container on that network and the default bridge forwards HTTPS
-        to REGISTRY_HOSTS only. The container writes only to /deps (the
-        repository's dependency folder) and its own tmpfs.
+        to the configured registries' hosts only. The container writes only to
+        /deps (the repository's dependency folder) and its own tmpfs, which is
+        mounted with exec here (and only here) because build backends run the
+        tools they install there (cmake, meson, compilers).
         """
         tag = uuid.uuid4().hex[:12]
         net, proxy, name = f"qot-registry-{tag}", f"qot-proxy-{tag}", f"qot-deps-{tag}"
@@ -114,7 +129,7 @@ class DockerWorker(Worker):
                             "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                             "--user", "65534:65534", "--memory", "256m", "--pids-limit", "64",
                             "-v", f"{PROXY_SCRIPT}:/proxy.py:ro", self.image,
-                            "python", "/proxy.py", str(PROXY_PORT), *REGISTRY_HOSTS],
+                            "python", "/proxy.py", str(PROXY_PORT), *self.registry_hosts()],
                            check=True, capture_output=True, timeout=60)
             subprocess.run([d, "network", "connect", "bridge", proxy], check=True, capture_output=True, timeout=60)
             cap = MAX_OUTPUT_BYTES
@@ -124,8 +139,8 @@ class DockerWorker(Worker):
                    "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                    "--pids-limit", str(self.pids), "--memory", "4g", "--memory-swap", "4g", "--cpus", self.cpus,
                    "--user", "65534:65534",
-                   "--tmpfs", f"/work:size={self.work_size},uid=65534,gid=65534,mode=0700",
-                   "--tmpfs", "/tmp:size=3g,mode=1777",
+                   "--tmpfs", f"/work:size={self.work_size},uid=65534,gid=65534,mode=0700,exec",
+                   "--tmpfs", "/tmp:size=3g,mode=1777,exec",
                    "-v", f"{Path(src).resolve()}:/src:ro", "-v", f"{deps_dir.resolve()}:/deps:rw",
                    "-e", "HOME=/tmp", "-e", "QOT_COPY=1", "-e", "QOT_CWD=/work",
                    "-e", f"HTTPS_PROXY={url}", "-e", f"https_proxy={url}",

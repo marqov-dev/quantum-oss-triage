@@ -34,7 +34,11 @@ def worker_script(has_repro: bool) -> str:
 
 
 def _counts(summary: str) -> dict:
-    return {k: int(v) for v, k in re.findall(r"(\d+) (passed|failed|errors?)", summary or "")}
+    out: dict[str, int] = {}
+    for v, k in re.findall(r"(\d+) (passed|failed|errors?)\b", summary or ""):
+        k = "errors" if k.startswith("error") else k
+        out[k] = out.get(k, 0) + int(v)
+    return out
 
 
 def check_in_worker(ctx: RepoContext, fid: str, diff: str, repro_code: str | None) -> dict:
@@ -43,17 +47,23 @@ def check_in_worker(ctx: RepoContext, fid: str, diff: str, repro_code: str | Non
     (inputs / "fix.diff").write_text(diff if diff.endswith("\n") else diff + "\n")
     if repro_code:
         (inputs / "test_qot_repro.py").write_text(repro_code)
-    r = ctx.worker.run(worker_script(bool(repro_code)), ctx.source_dir, inputs=inputs, timeout_s=900)
+    # The whole suite runs here, so allow at least as long as the baseline run.
+    timeout_s = max(900, (ctx.spec.tests_timeout_s or 0) + 300)
+    r = ctx.worker.run(worker_script(bool(repro_code)), ctx.source_dir, inputs=inputs, timeout_s=timeout_s)
     (inputs.parent / "worker-output.txt").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr)
     out = r.stdout
     applied = "QOT_APPLY_RC=0" in out
     repro = re.search(r"QOT_REPRO_RC=(\d+)", out)
     tests = re.search(r"QOT_TESTS_SUMMARY=(.*)", out)
-    baseline = (ctx.read_json("scan-summary.json", {}).get("project-tests") or {}).get("hygiene", {})
+    base = ctx.read_json("scan-summary.json", {}).get("project-tests") or {}
+    baseline = base.get("hygiene", {})
     after = _counts(tests.group(1)) if tests else {}
     regressed = bool(tests) and (after.get("failed", 0) > baseline.get("failed", 0)
-                                 or after.get("passed", 0) < baseline.get("passed", 0))
+                                 or after.get("passed", 0) < baseline.get("passed", 0)
+                                 or after.get("errors", 0) > baseline.get("errors", 0))
     return {"applied": applied, "timed_out": r.timed_out,
+            # The suite ran at baseline but not here: the fix is not checked against it.
+            "tests_not_run": base.get("status") == "ok" and not tests,
             "repro_passes": (repro.group(1) == "0") if repro else None,
             "tests_after": tests.group(1) if tests else "no tests run",
             "tests_baseline": baseline.get("summary", "none"), "tests_regressed": regressed}
@@ -171,12 +181,16 @@ def fix_one(ctx: RepoContext, f: dict) -> dict:
     objections = [r for r in reviews if r["verdict"] in ("refute", "unsure", "failed")]
     if not worker_ok:
         status = "pending"
+    elif check.get("timed_out"):
+        status = "check_timed_out"
     elif not check["applied"]:
         status = "apply_failed"
     elif repro_code and not check["repro_passes"]:
         status = "repro_still_fails"
     elif check["tests_regressed"]:
         status = "tests_regressed"
+    elif check.get("tests_not_run"):
+        status = "tests_not_run"
     elif objections:
         status = "pending_objections"
     elif not independent:

@@ -84,3 +84,13 @@ def test_unparseable_output_is_failed(tmp_path):
     (tmp_path / "a.py").write_text("x=1\n")
     r = Ruff().run(W(), tmp_path, versions={"ruff": "ruff 1"})
     assert isinstance(r, ScanResult) and r.status == "failed"
+
+
+def test_osv_falls_back_to_the_installed_environment():
+    doc = {"results": [{"source": {"path": "/deps/freeze.txt", "type": "lockfile"}, "packages": [
+        {"package": {"name": "pip", "version": "25.2"}, "groups": [{"ids": ["GHSA-pip"], "max_severity": "5"}]},
+        {"package": {"name": "pyyaml", "version": "5.3"}, "groups": [{"ids": ["GHSA-yaml"], "max_severity": "9.8"}]}]}]}
+    r = OsvScanner().parse(json.dumps(doc), "No package sources found\nQOT-OSV-INSTALLED-ENV\n", 0)
+    assert [f["rule_id"] for f in r.findings] == ["GHSA-yaml"]  # the harness's own pip is left out
+    assert r.findings[0]["file"] == "pyproject.toml" and "installed environment" in r.note
+    assert "QOT-OSV-INSTALLED-ENV" in OsvScanner().script() and "/deps/freeze.txt" in OsvScanner().script()

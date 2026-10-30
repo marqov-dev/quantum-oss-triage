@@ -32,6 +32,11 @@ worker:
   image: quantum-oss-triage-worker:dev
   cpus: "2"
   memory: 2g
+  # Package registries the dependency stage may reach (HTTPS, these hosts
+  # only): pypi = pypi.org, files.pythonhosted.org; crates = crates.io, for
+  # Rust extensions built with maturin or setuptools-rust. Git hosts and other
+  # URLs are always refused.
+  registries: [pypi, crates]
 
 timeouts:
   review_s: 1500

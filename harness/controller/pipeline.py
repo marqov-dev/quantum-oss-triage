@@ -110,6 +110,7 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
         rows = [{"name": n, "available": True, "reason": "injected", "version": a.version(), "model_ids": [],
                  "isolation_verified": False, "used": True} for n, a in adapters.items()]
     worker = worker or DockerWorker(image=config.worker["image"], cpus=str(config.worker.get("cpus", "2")),
+                                    registries=tuple(config.worker.get("registries") or ("pypi",)),
                                     memory=config.worker.get("memory", "2g"))
     summary = {"run_dir": str(run_dir), "repos": {}, "stopped": None}
     for spec in repos:

@@ -173,7 +173,14 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    GitHub token and a GitHub remote, so it is recorded as unavailable in
    v0.1. Security and correctness leads become candidate findings. Lint,
    style and link results become hygiene counts. gitleaks values, authors and
-   emails are redacted before anything is stored.
+   emails are redacted before anything is stored. The project's tests are
+   recorded as a clean baseline only when the suite ran (pytest exited 0 or
+   1, at least one test ran, no collection or setup errors); a timeout, an
+   error count or an empty run is recorded as failed, so the run is
+   incomplete. A repository with a long suite sets `tests.timeout_s`; no
+   subset is chosen for it, since any subset would hide what it leaves out.
+   Where osv-scanner cannot read the repository's lockfile (pixi.lock, for
+   one), it scans the versions the dependency stage installed instead.
 4. **Review.** Every review skill on every available model, independently.
    Models do not see the scanner leads, so their detections stay independent.
 5. **Cross-check.** Likely duplicates are grouped first (same file, nearby
@@ -200,7 +207,9 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    diff from git. Invalid edits get one retry with the reason. The other
    models review the diff with `verify-fix`. A worker applies it to
    a throwaway copy, reruns the reproduction (which must now pass) and the
-   existing tests (which must not regress). A fix with any objection stays
+   existing tests (which must not regress, in failures or errors). A fix
+   whose check timed out, or whose suite ran at baseline but not after the
+   change, is not validated. A fix with any objection stays
    `pending_objections`. A reviewer who agrees a fix removes the cause but
    says it changes behaviour (for example, replacing pickle with JSON changes
    the format a service must send) leaves a caveat that is kept with the fix
@@ -309,17 +318,23 @@ Stubbed or not built yet:
 
 - **Codex and Antigravity** run in the reviewer sandbox. Egress from the
   sandbox is not restricted (see above).
-- **Dependency installation** covers Python packages from PyPI only. Git,
-  URL and private-index requirements are refused by the proxy and recorded.
-  A project with compiled extensions cannot import them from the source copy
-  (the installed copy is removed), so its suite fails at import and is
-  reported as such.
+- **Dependency installation** reaches the configured registries only
+  (`worker.registries`: PyPI, and crates.io for Rust extensions). Git, URL
+  and private-index requirements are refused by the proxy and recorded. A
+  repository's `uv.lock` is installed as locked when present. The worker has
+  compilers, CMake and a pinned Rust toolchain, so C, C++, Cython and Rust
+  extensions can build, but a package that publishes wheels for x86_64 only
+  and no source cannot install on an arm64 host (for example `bqskitrs` and
+  `pyqpanda3`); that is recorded as a failed install. A project with compiled
+  extensions cannot import them from the source copy (the installed copy is
+  removed), so its suite fails at import and is reported as such.
 - **OpenSSF Scorecard** is recorded as unavailable.
 - **Team membership** cannot be read with a Marqov API key, so the
   single-member condition for per-repository documents in the hub is a
   recorded statement by a person, not a check.
-- **Rust and C++** repositories: the worker image has no Rust or C++
-  toolchain, so their existing tests do not run and fix checks rest on review.
+- **Rust and C++** repositories: the dependency stage builds Python
+  packages only. A repository's own Rust or C++ test suite (cargo test,
+  CTest) is not run, so fix checks there rest on review and the Python tests.
 - **Marqov sealing**: the platform refuses to seal a Project with more than
   one active Workspace (409, the interim guard from marqov-platform #2971),
   so a shared per-repository Project cannot be sealed while it holds several

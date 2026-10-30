@@ -13,6 +13,9 @@ from harness import secrets
 
 EXPLOIT_WORDING = re.compile(r"(?i)\b(exploit(?:able|ation)?|payload|proof[- ]of[- ]concept|\bPoC\b|remote code execution|\bRCE\b|arbitrary code|privilege escalation|bypass(?:es|ed)? (?:auth|the))\b")
 EMAIL = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# Reserved for examples and testing (RFC 2606, RFC 6761): such an address
+# belongs to no one, and tests that make git commits often use one.
+RESERVED_DOMAIN = re.compile(r"(?i)@(?:(?:[a-z0-9-]+\.)*example\.(?:com|net|org)|(?:[a-z0-9-]+\.)+(?:example|invalid|test|localhost))$")
 
 
 def check(text: str, sensitive_findings: list[dict], allowed_emails: tuple[str, ...] = ()) -> list[str]:
@@ -22,7 +25,7 @@ def check(text: str, sensitive_findings: list[dict], allowed_emails: tuple[str, 
     for m in EXPLOIT_WORDING.finditer(text):
         problems.append(f"exploit wording: {m.group(0)!r}")
     for m in EMAIL.finditer(text):
-        if m.group(0) not in allowed_emails:
+        if m.group(0) not in allowed_emails and not RESERVED_DOMAIN.search(m.group(0)):
             problems.append(f"email address: {m.group(0)}")
     for f in sensitive_findings:
         for label, needle in (("title", f["title"]), ("claim", f["claim"][:60])):

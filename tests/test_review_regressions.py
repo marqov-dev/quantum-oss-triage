@@ -3,6 +3,8 @@
 import json
 import os
 
+import pytest
+
 from harness import secrets
 from harness.adapters import CodexAdapter
 from harness.adapters.base import Invocation
@@ -120,3 +122,47 @@ def test_fix_check_runs_existing_tests_when_only_tests_folder_exists(tmp_path):
     probe = script[script.index("if [ -d tests ]"):].replace("python -m pytest", "echo RAN #")
     out = subprocess.run(["sh", "-c", probe], cwd=tmp_path, capture_output=True, text=True).stdout
     assert "QOT_TESTS_RC=none" not in out
+
+
+class _ScriptedWorker:
+    def __init__(self, stdout, timed_out=False):
+        self.stdout, self.timed_out, self.timeouts = stdout, timed_out, []
+
+    def run(self, script, src, *, inputs=None, timeout_s=0, **kw):
+        from harness.workers.base import WorkerResult
+
+        self.timeouts.append(timeout_s)
+        return WorkerResult(None if self.timed_out else 0, self.stdout, "", timed_out=self.timed_out)
+
+
+def _fix_ctx(tmp_path, worker, baseline_status="ok", timeout=None):
+    from types import SimpleNamespace
+
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(exist_ok=True)
+    (repo_dir / "scan-summary.json").write_text(json.dumps({"project-tests": {
+        "status": baseline_status, "hygiene": {"summary": "10 passed in 1s", "passed": 10}}}))
+    return SimpleNamespace(repo_dir=repo_dir, run_dir=tmp_path, source_dir=tmp_path, worker=worker,
+                           spec=SimpleNamespace(tests_timeout_s=timeout),
+                           read_json=lambda name, default=None: json.loads((repo_dir / name).read_text()))
+
+
+@pytest.mark.parametrize("stdout,timed_out,key,value", [
+    ("QOT_APPLY_RC=0\nQOT_TESTS_RC=none\n", False, "tests_not_run", True),   # the suite ran at baseline, not here
+    ("QOT_APPLY_RC=0\nQOT_TESTS_RC=1\nQOT_TESTS_SUMMARY=10 passed, 3 errors in 1s\n", False, "tests_regressed", True),
+    ("QOT_APPLY_RC=0\nQOT_TESTS_RC=0\nQOT_TESTS_SUMMARY=10 passed in 1s\n", False, "tests_regressed", False),
+    ("", True, "timed_out", True),
+])
+def test_fix_check_does_not_pass_a_suite_that_did_not_run_cleanly(tmp_path, stdout, timed_out, key, value):
+    from harness.stages.fix import check_in_worker
+
+    check = check_in_worker(_fix_ctx(tmp_path, _ScriptedWorker(stdout, timed_out)), "QOT-1", "diff", None)
+    assert check[key] is value
+
+
+def test_fix_check_allows_the_suite_its_configured_time(tmp_path):
+    from harness.stages.fix import check_in_worker
+
+    w = _ScriptedWorker("QOT_APPLY_RC=0\nQOT_TESTS_SUMMARY=10 passed in 1s\n")
+    check_in_worker(_fix_ctx(tmp_path, w, timeout=3600), "QOT-1", "diff", None)
+    assert w.timeouts == [3900]
