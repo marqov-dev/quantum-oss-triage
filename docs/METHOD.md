@@ -90,17 +90,25 @@ on. In addition:
     and multi-agent. Its shell commands run in Codex's own bubblewrap sandbox
     inside the container: read-only, no network, no capabilities (checked
     live).
-  - Antigravity: `agy -p ... --output-format json --json-schema <file> --mode
-    plan --sandbox --disable-slash-commands`, inside a hard 25-minute process
-    timeout, because print mode has a reported headless hang. On macOS agy
+  - Antigravity: `agy -p ... --output-format json --json-schema <file>
+    --disable-slash-commands`, inside a hard 25-minute process timeout, because
+    print mode has a reported headless hang. Its `--mode plan` has no effect
+    with `--disable-slash-commands`, and its own `--sandbox` cannot start
+    inside the container, so neither is used there. Shell commands are limited
+    instead by an allow-list in the harness's agy settings: `ls`, `cat`, `head`,
+    `tail`, `wc`, `grep`, `nl`, `pwd`, `find` and `git grep`. agy refuses
+    anything else, including `find -exec`, `;` and `$(...)` (checked live on
+    agy 1.4.7). Unlike Codex's, these commands run with network access, but
+    none of them is a network client. On macOS agy
     keeps its sign-in in the keychain, which cannot be copied, so it is signed
     in once inside its sandbox (`qot sandbox-login agy`).
   - The CLI process itself needs the network to reach its provider, so the
     container is on Docker's default bridge with unrestricted egress. The
     review copy is public source, but the CLI's own sign-in token sits in the
-    container. Codex's shell commands have no network; a model could still
-    quote a file it can read into its reply, which the harness redacts for
-    secret-like values before storing. An egress allowlist is later work.
+    container, and `cat` can read Antigravity's. Codex's shell commands have no
+    network; a model could still quote a file it can read into its reply, which
+    the harness redacts for secret-like values before storing. An egress
+    allowlist is later work.
   - Codex's sign-in can be copied from `~/.codex/auth.json` (`qot
     sandbox-login codex --copy`, OpenAI's documented fallback for headless
     machines) or made separately with device-code sign-in (`qot sandbox-login

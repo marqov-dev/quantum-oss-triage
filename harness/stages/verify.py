@@ -26,9 +26,21 @@ def plan(ctx: RepoContext, groups: list[list[dict]]) -> list[dict]:
         seen.add(gid)
         detectors = {c["tool"] for c in g}
         others = [m for m in models if m not in detectors]
+        if not detectors & merge.MODEL_TOOLS:
+            others = _without_limited(ctx, gid, others)
         verifiers = [(m, "independent") for m in others] or [(m, "same_model") for m in models if m in detectors]
         out.append({"id": gid, "candidates": g, "verifiers": verifiers})
     return out
+
+
+def _without_limited(ctx: RepoContext, gid: str, verifiers: list[str]) -> list[str]:
+    """Scanner and prior-work claims skip a quota-limited model while another model can check them.
+
+    A verdict that model has already given is kept.
+    """
+    limited = set(ctx.config.verify_model_claims_only)
+    kept = [m for m in verifiers if m not in limited or ctx.ledger.unit(ctx.spec.name, "verify", gid, m).done()]
+    return kept if set(kept) - limited else verifiers
 
 
 def run(ctx: RepoContext, candidates: list[dict]) -> list[dict]:

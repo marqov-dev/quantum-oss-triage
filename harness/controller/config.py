@@ -41,6 +41,8 @@ class Config:
     fix_branch_prefix: str = "review/2026-10/"
     # Off by default: see Adapter.runs_shell_on_host and docs/METHOD.md.
     allow_host_shell_adapters: bool = False
+    # Models that verify only what another model raised: see harness/stages/verify.py.
+    verify_model_claims_only: list[str] = field(default_factory=list)
     # Read by the publisher process itself (harness/publish), not the controller.
     publish: dict = field(default_factory=dict)
 

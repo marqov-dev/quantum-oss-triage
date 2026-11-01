@@ -46,6 +46,13 @@ def test_capacity_refusal_is_retried_after_backoff(tmp_path):
     assert r.ok and r.capacity_retries == 2 and a.slept == [30, 120]
 
 
+def test_antigravity_server_refusal_is_retried_after_backoff(tmp_path):
+    a = adapter("Our servers are experiencing high traffic right now, please try again in a minute. "
+                "(UNAVAILABLE (code 503): No capacity available for model gpt-oss-120b-medium on the server)")
+    r = a.run("p", "s", "review-output", Path(tmp_path))
+    assert r.ok and r.capacity_retries == 1 and a.slept == [30]
+
+
 def test_capacity_refusal_gives_up_after_the_last_backoff(tmp_path):
     a = adapter(*[BUSY] * 10)
     r = a.run("p", "s", "review-output", Path(tmp_path))

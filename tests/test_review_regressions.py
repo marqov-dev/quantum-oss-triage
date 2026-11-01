@@ -77,6 +77,7 @@ def test_distinct_claims_on_one_line_get_distinct_ids(tmp_path):
     class Ctx:
         spec = type("S", (), {"name": "r"})()
         source_dir = tmp_path
+        config = type("C", (), {"verify_model_claims_only": []})()
 
         def model_order(self):
             return []

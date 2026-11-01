@@ -127,10 +127,23 @@ def test_codex_command_is_read_only_with_schema(tmp_path, monkeypatch):
 def test_antigravity_command_and_hard_timeout(tmp_path):
     a = AntigravityAdapter(binary="agy")
     cmd = a.build_command("p", "s", "verdict", tmp_path, tmp_path / "o")
-    for flag in ("--output-format", "--mode", "--sandbox", "--print-timeout"):
+    for flag in ("--output-format", "--disable-slash-commands", "--print-timeout"):
         assert flag in cmd
-    assert cmd[cmd.index("--mode") + 1] == "plan"
+    assert "--mode" not in cmd and "--sandbox" not in cmd  # see the adapter's module docstring
+    assert "--sandbox" in AntigravityAdapter(binary="agy", sandbox=False).build_command("p", "s", "verdict", tmp_path,
+                                                                                        tmp_path / "o")
+    assert "limited to ls, cat" in cmd[cmd.index("-p") + 1]
     assert a.max_timeout_s == 25 * 60
+
+
+def test_antigravity_refused_command_is_not_retried(tmp_path):
+    from harness.adapters.base import Invocation
+
+    doc = {"status": "SUCCESS", "response": "", "denied_actions": [{"action": "command", "display_name": "RunCommand"}]}
+    p = AntigravityAdapter().parse(Invocation(0, json.dumps(doc), "", False, 1.0))
+    assert p.data is None and p.failed_call and "allow-list" in p.error
+    empty = AntigravityAdapter().parse(Invocation(0, json.dumps({"status": "SUCCESS", "response": ""}), "", False, 1.0))
+    assert empty.data is None and not empty.failed_call  # an empty reply on its own still gets one retry
 
 
 def test_codex_parse_reads_output_file_and_usage():

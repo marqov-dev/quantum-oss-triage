@@ -161,9 +161,16 @@ def test_codex_sandbox_command_flags(tmp_path):
 def test_antigravity_command_uses_schema_file(tmp_path):
     cmd = AntigravityAdapter().build_command("p", "s", "verdict", tmp_path, tmp_path / "out.json")
     assert json.loads(Path(cmd[cmd.index("--json-schema") + 1]).read_text())["title"] == "Verifier verdict"
-    for flag in ("--disable-slash-commands", "--sandbox"):
-        assert flag in cmd
-    assert cmd[cmd.index("--mode") + 1] == "plan"
+    assert "--disable-slash-commands" in cmd
+    assert "--mode" not in cmd and "--sandbox" not in cmd
+
+
+def test_agy_allow_list_holds_no_interpreter_or_writer():
+    from harness.adapters.sandbox import AGY_ALLOWED_COMMANDS, AGY_SETTINGS
+
+    allowed = json.loads(AGY_SETTINGS)["permissions"]["allow"]
+    assert allowed == [f"command({c})" for c in AGY_ALLOWED_COMMANDS]
+    assert not {"python", "python3", "sh", "bash", "sed", "awk", "curl", "git", "*"} & set(AGY_ALLOWED_COMMANDS)
 
 
 def test_antigravity_parse_current_json_format():
