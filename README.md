@@ -15,13 +15,19 @@ While this project is spun out of an internal effort at [Marqov](https://marqov.
 
 | Organisation | Repositories |
 | --- | --- |
-| Unitary Foundation | [ucc](https://github.com/unitaryfoundation/ucc), [metriq-gym](https://github.com/unitaryfoundation/metriq-gym), [mitiq](https://github.com/unitaryfoundation/mitiq), [jeff](https://github.com/unitaryfoundation/jeff), [qrack](https://github.com/unitaryfoundation/qrack), [clifft](https://github.com/unitaryfoundation/clifft) |
+| Unitary Foundation | [ucc](https://github.com/unitaryfoundation/ucc), [metriq-gym](https://github.com/unitaryfoundation/metriq-gym), [mitiq](https://github.com/unitaryfoundation/mitiq), [jeff](https://github.com/unitaryfoundation/jeff), [qrack](https://github.com/unitaryfoundation/qrack), [clifft](https://github.com/unitaryfoundation/clifft), [pyqrack](https://github.com/unitaryfoundation/pyqrack) |
 | QuTiP | [qutip](https://github.com/qutip/qutip) |
 | Xanadu | [pennylane](https://github.com/PennyLaneAI/pennylane) |
 | PsiQuantum | [bartiq](https://github.com/PsiQ/bartiq), [psiqdk](https://github.com/PsiQ/psiqdk) |
 | Qiskit Community | [qrmi](https://github.com/qiskit-community/qrmi) |
-| Independent | [quimb](https://github.com/jcmgray/quimb) |
+| Independent | [quimb](https://github.com/jcmgray/quimb), [PyMatching](https://github.com/oscarhiggott/PyMatching), [emlint](https://github.com/MathysRennela/emlint) |
 | PCSS | [open-qbench](https://github.com/PCSS-Quantum/open-qbench) |
+| Qilimanjaro | [qilisdk](https://github.com/qilimanjaro-tech/qilisdk), [qprogram](https://github.com/qilimanjaro-tech/qprogram) |
+| Quantum AI | [Stim](https://github.com/quantumlib/Stim) |
+| IonQ | [ionq-core](https://github.com/ionq/ionq-core) |
+| Entropica Labs | [openqaoa](https://github.com/entropicalabs/openqaoa), [el-loom](https://github.com/entropicalabs/el-loom) |
+| BQSKit | [bqskit](https://github.com/BQSKit/bqskit) |
+| ZX-calculus | [pyzx](https://github.com/zxcalc/pyzx) |
 
 The list lives in `config/repos.yaml`. Listing a project means it is in scope
 for review, not that its maintainers are involved or have endorsed the work.

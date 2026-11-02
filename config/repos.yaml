@@ -24,6 +24,8 @@ repos:
   - name: unitaryfoundation/mitiq
     source: https://github.com/unitaryfoundation/mitiq.git
     ref: main
+    deps:
+      extras: [braket, pennylane, pyquil, qibo, qiskit]
   # Rust
   - name: unitaryfoundation/jeff
     source: https://github.com/unitaryfoundation/jeff.git
@@ -61,3 +63,41 @@ repos:
   - name: PCSS-Quantum/open-qbench
     source: https://github.com/PCSS-Quantum/open-qbench.git
     ref: new_architecture
+  - name: qilimanjaro-tech/qilisdk
+    source: https://github.com/qilimanjaro-tech/qilisdk.git
+    ref: main
+  - name: qilimanjaro-tech/qprogram
+    source: https://github.com/qilimanjaro-tech/qprogram.git
+    ref: main
+  # C++. CONTRIBUTING.md: AI-generated code is not accepted upstream, so report findings only
+  - name: quantumlib/Stim
+    source: https://github.com/quantumlib/Stim.git
+    ref: main
+  # C++; default branch is master
+  - name: oscarhiggott/PyMatching
+    source: https://github.com/oscarhiggott/PyMatching.git
+    ref: master
+  - name: ionq/ionq-core
+    source: https://github.com/ionq/ionq-core.git
+    ref: main
+  - name: entropicalabs/openqaoa
+    source: https://github.com/entropicalabs/openqaoa.git
+    ref: main
+  - name: entropicalabs/el-loom
+    source: https://github.com/entropicalabs/el-loom.git
+    ref: main
+  - name: MathysRennela/emlint
+    source: https://github.com/MathysRennela/emlint.git
+    ref: main
+  # Python bindings to Qrack, which is on hold; large repository (about 1.4 GB)
+  - name: unitaryfoundation/pyqrack
+    source: https://github.com/unitaryfoundation/pyqrack.git
+    ref: main
+  # Depends on bqskitrs, which has x86_64 wheels only, so it installs partly on aarch64
+  - name: BQSKit/bqskit
+    source: https://github.com/BQSKit/bqskit.git
+    ref: main
+  # default branch is master
+  - name: zxcalc/pyzx
+    source: https://github.com/zxcalc/pyzx.git
+    ref: master
