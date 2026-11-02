@@ -20,7 +20,7 @@ def plan(ctx: RepoContext, groups: list[list[dict]]) -> list[dict]:
     seen: set[str] = set()
     for g in sorted(groups, key=lambda g: sorted((c["tool"], c.get("rule_id") or "", c["title"]) for c in g)):
         gid = merge.group_key(ctx.spec.name, g, ctx.source_dir)
-        if gid in seen:  # same lines, distinct claims: disambiguate by the representative's rule or title
+        while gid in seen:  # same lines, distinct claims: disambiguate by the representative's rule or title
             rep = merge.representative(g)
             gid = merge.stable_id(ctx.spec.name, f"{gid}|{rep.get('rule_id') or rep['title']}")
         seen.add(gid)
