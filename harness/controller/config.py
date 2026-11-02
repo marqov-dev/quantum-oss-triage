@@ -16,6 +16,7 @@ class RepoSpec:
     include: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     tests_timeout_s: int | None = None   # the project's own suite, when the default is too short
+    install_extras: list[str] = field(default_factory=list)   # optional integrations the suite needs
 
     @property
     def slug(self) -> str:
@@ -26,7 +27,8 @@ class RepoSpec:
         scope = d.get("scope") or {}
         tests = d.get("tests") or {}
         return cls(d["name"], str(d["source"]), d.get("ref"), list(scope.get("include") or []),
-                   list(scope.get("exclude") or []), tests.get("timeout_s"))
+                   list(scope.get("exclude") or []), tests.get("timeout_s"),
+                   list((d.get("deps") or {}).get("extras") or []))
 
 
 @dataclass

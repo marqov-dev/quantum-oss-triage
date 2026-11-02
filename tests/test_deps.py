@@ -49,6 +49,17 @@ def test_plan_reads_requirements_extras_and_groups(tmp_path):
     assert "pip uninstall" not in s and "QOT-PROJECT-INSTALLED" in s
 
 
+def test_a_poetry_project_is_installable(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[tool.poetry]\nname = "x"\n[build-system]\nrequires = ["poetry-core"]\n')
+    assert deps.plan(tmp_path)["project"]
+
+
+def test_configured_extras_are_installed_only_when_the_project_declares_them(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n[project.optional-dependencies]\nqiskit = ["qiskit"]\ndev = ["y"]\n')
+    assert deps.plan(tmp_path, ["qiskit", "missing"])["extras"] == ["dev", "qiskit"]
+    assert RepoSpec.from_dict({"name": "a/b", "source": "s", "deps": {"extras": ["qiskit"]}}).install_extras == ["qiskit"]
+
+
 def test_plan_survives_a_broken_pyproject(tmp_path):
     (tmp_path / "pyproject.toml").write_text("[project\nname=")
     assert deps.plan(tmp_path)["project"] is False

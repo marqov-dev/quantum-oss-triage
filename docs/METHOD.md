@@ -164,7 +164,7 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    scope (included and excluded paths) is recorded.
 2. **Dependencies.** The install plan is read from the snapshot's files
    (requirements files except documentation ones, `pyproject.toml` test or
-   dev extras and dependency groups, `setup.py` or `setup.cfg`); nothing runs
+   dev extras, any extras set for the repository under `deps.extras`, dependency groups, `setup.py` or `setup.cfg`); nothing runs
    on the host. A worker installs them into an isolated virtual environment in
    the repository's run folder. Its only network is the package registry: it
    sits on an internal Docker network with no route out, and a proxy container
