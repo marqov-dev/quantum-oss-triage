@@ -1,6 +1,14 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _few_gate_reruns(monkeypatch):
+    # Twenty reruns per finding is right for a real run and slow for tests.
+    from harness.stages import gates
+
+    monkeypatch.setattr(gates, "RERUNS", 2)
+
+
 @pytest.fixture
 def sample_finding():
     return {
