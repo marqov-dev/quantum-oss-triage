@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/blind-fix-output.schema.json",
+  "title": "Blind fix",
+  "description": "Output of blind-fix: whether the claimed defect holds, and if so exact search-and-replace edits that fix it. The fixer never sees the reproduction test. Strict, so Codex --output-schema accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claim_holds",
+    "feasible",
+    "edits",
+    "summary",
+    "notes"
+  ],
+  "properties": {
+    "claim_holds": {
+      "type": "string",
+      "enum": [
+        "yes",
+        "no",
+        "unsure"
+      ]
+    },
+    "feasible": {
+      "type": "boolean"
+    },
+    "edits": {
+      "type": "array",
+      "description": "Applied in order. Empty when not feasible.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "old",
+          "new"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the repository root."
+          },
+          "old": {
+            "type": "string",
+            "description": "Exact text to replace, copied from the file, including indentation. It must occur exactly once in the file at that point in the sequence. Empty string means create a new file."
+          },
+          "new": {
+            "type": "string",
+            "description": "Replacement text (the whole content for a new file)."
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

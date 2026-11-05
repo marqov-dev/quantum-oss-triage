@@ -18,11 +18,11 @@ from harness.controller.config import Config, RepoSpec
 from harness.controller.context import RepoContext, UsageLimitReached
 from harness.controller.ledger import Ledger
 from harness.controller.manifest import Manifest
-from harness.stages import challenge, deps, fix, gates, pin, review, scan, triage, validate, verify
+from harness.stages import challenge, deps, fix, fixgate, gates, pin, review, scan, triage, validate, verify
 from harness.workers.base import Worker
 from harness.workers.docker import DockerWorker
 
-DEFAULT_STAGES = ("pin", "deps", "scan", "review", "verify", "validate", "gates", "challenge", "triage", "fix")
+DEFAULT_STAGES = ("pin", "deps", "scan", "review", "verify", "validate", "gates", "challenge", "fixgate", "triage", "fix")
 
 
 def build_adapters(config: Config, only: list[str] | None = None, require_attestation: bool | None = None):
@@ -70,6 +70,8 @@ def _run_stage(ctx: RepoContext, stage: str) -> None:
         gates.run(ctx)
     elif stage == "challenge":
         challenge.run(ctx)
+    elif stage == "fixgate":
+        fixgate.run(ctx)
     elif stage == "triage":
         findings = ctx.read_json("findings.json", [])
         triage.write(ctx, findings)

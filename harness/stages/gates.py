@@ -9,8 +9,8 @@ Gates decide by rule, with no model calls:
 3. Still present: the same test still fails the same way on the project's
    current default branch. The latest release is recorded for information.
 
-A fourth gate, a fix written in a separate session making the test pass, is
-not built yet. Results go to gates.json beside findings.json, so finding
+The fourth gate, a fix written in a separate session making the test pass,
+is its own stage (fixgate.py), after the challenge. Results go to gates.json beside findings.json, so finding
 records and a person's decisions are untouched.
 """
 

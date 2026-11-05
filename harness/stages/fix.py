@@ -73,14 +73,14 @@ class EditError(ValueError):
     pass
 
 
-def build_diff(ctx: RepoContext, fid: str, edits: list[dict]) -> str:
+def build_diff(ctx: RepoContext, fid: str, edits: list[dict], tree: Path | None = None) -> str:
     """Apply search-and-replace edits to a temporary clone and return git's diff.
 
     Only text operations happen on the host; nothing from the repository runs.
     """
     from harness.stages.pin import git
 
-    tree = ctx.repo_dir / "fixes" / fid / "tree"
+    tree = tree or ctx.repo_dir / "fixes" / fid / "tree"
     if tree.exists():
         shutil.rmtree(tree)
     tree.parent.mkdir(parents=True, exist_ok=True)

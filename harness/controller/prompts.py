@@ -69,9 +69,14 @@ def challenge_test(skill: Skill, repo: str, commit: str, claim: dict, test: dict
             f"## Observed at this commit\n\n```\n{observed}\n```")
 
 
+def blind_fix(skill: Skill, repo: str, commit: str, claim: dict) -> str:
+    return (f"{skill.body}\n\n## The claim\n\nRepository: {repo} at commit {commit} "
+            f"(the current working directory, read-only).\n\n```json\n{json.dumps(test_claim_view(claim), indent=2)}\n```")
+
+
 def templates_sha256() -> str:
     import inspect
 
     src = SYSTEM + "".join(inspect.getsource(f) for f in (review, claim_view, verify, propose_fix, verify_fix,
-                                                         test_claim_view, challenge_test))
+                                                         test_claim_view, challenge_test, blind_fix))
     return hashlib.sha256(src.encode()).hexdigest()

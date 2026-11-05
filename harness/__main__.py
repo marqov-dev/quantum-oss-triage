@@ -28,7 +28,7 @@ def main(argv=None) -> int:
     r.add_argument("--repo", action="append")
     r.add_argument("--repos-file", type=Path)
     r.add_argument("--run-dir")
-    r.add_argument("--stages", default="pin,deps,scan,review,verify,validate,gates,challenge,triage,fix")
+    r.add_argument("--stages", default="pin,deps,scan,review,verify,validate,gates,challenge,fixgate,triage,fix")
     r.add_argument("--models", help="comma-separated subset of configured models")
     r.add_argument("--retry-failed", action="store_true")
     r.add_argument("--no-attestation-check", action="store_true", help="for development only")
