@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/marqov-dev/quantum-oss-triage/schemas/test-challenge.schema.json",
+  "title": "Test challenge verdict",
+  "description": "Output of challenge-test: one model's attack on a reproduction test another model wrote. Strict, so Codex --output-schema accepts it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "problem", "reason", "citations", "lines_read"],
+  "properties": {
+    "verdict": {"type": "string", "enum": ["valid", "invalid", "unsure"]},
+    "problem": {
+      "type": "string",
+      "enum": ["none", "expectation_unsupported", "wrong_failure_reason", "tests_something_else",
+               "environment_or_chance", "weak_control", "other"]
+    },
+    "reason": {"type": "string", "minLength": 1},
+    "citations": {
+      "description": "Where the evidence for the verdict is: repository files with lines, and what they say. An invalid verdict without one counts as unsure.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line_start", "line_end", "says"],
+        "properties": {
+          "file": {"type": "string"},
+          "line_start": {"type": "integer", "minimum": 1},
+          "line_end": {"type": "integer", "minimum": 1},
+          "says": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "lines_read": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line_start", "line_end"],
+        "properties": {
+          "file": {"type": "string"},
+          "line_start": {"type": "integer", "minimum": 1},
+          "line_end": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  }
+}

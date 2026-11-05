@@ -9,7 +9,7 @@ from jsonschema import Draft202012Validator
 
 from harness.paths import SCHEMAS_DIR
 
-NAMES = ("finding", "verdict", "run", "review-output", "fix-output")
+NAMES = ("finding", "verdict", "run", "review-output", "fix-output", "test-challenge")
 
 
 @cache

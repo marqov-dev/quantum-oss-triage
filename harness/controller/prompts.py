@@ -54,8 +54,24 @@ def verify_fix(skill: Skill, repo: str, commit: str, finding: dict, diff: str) -
             f"```json\n{json.dumps(claim_view(finding), indent=2)}\n```\n\n## The proposed diff\n\n```diff\n{diff}\n```")
 
 
+def test_claim_view(c: dict) -> dict:
+    """What a test challenger sees: the claim, without the finder's reasoning or who made it."""
+    return {k: c.get(k) for k in ("title", "area", "file", "line_start", "line_end", "claim")}
+
+
+def challenge_test(skill: Skill, repo: str, commit: str, claim: dict, test: dict, observed: str) -> str:
+    return (f"{skill.body}\n\n## The claim\n\nRepository: {repo} at commit {commit} "
+            f"(the current working directory, read-only).\n\n```json\n{json.dumps(test_claim_view(claim), indent=2)}\n```\n\n"
+            f"## The test\n\nExpected behaviour, according to its author: {test['expected_behaviour_source']}\n"
+            f"Failure its author expected: {test['claimed_failure']}\n\n"
+            f"Test (`test_qot_repro.py`, must fail at this commit):\n```python\n{test['test_code']}\n```\n\n"
+            f"Control (`test_qot_control.py`, must pass):\n```python\n{test['control_code']}\n```\n\n"
+            f"## Observed at this commit\n\n```\n{observed}\n```")
+
+
 def templates_sha256() -> str:
     import inspect
 
-    src = SYSTEM + "".join(inspect.getsource(f) for f in (review, claim_view, verify, propose_fix, verify_fix))
+    src = SYSTEM + "".join(inspect.getsource(f) for f in (review, claim_view, verify, propose_fix, verify_fix,
+                                                         test_claim_view, challenge_test))
     return hashlib.sha256(src.encode()).hexdigest()
