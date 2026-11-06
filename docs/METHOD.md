@@ -16,7 +16,8 @@ mechanism below follows from them.
 - **Evidence is kept in separate fields, not one score.** Detection source,
   corroboration, validation, impact, severity, sensitivity and disposition are
   recorded separately (`schemas/finding.schema.json`). Models agreeing is not
-  validation. Severity is set by a person.
+  validation. Severity is shown as each model's or tool's proposal,
+  labelled as such; we do not set it.
 - **A false positive costs more than a miss.** There is no finding quota. A
   repository with no validated findings, within a stated scope, is a
   legitimate result.
@@ -27,7 +28,10 @@ mechanism below follows from them.
   configuration can carry text written to steer an AI reviewer, and its
   install scripts and tests are code we run. Instructions in the skills are
   not the defence; the separation below is.
-- **A person signs off on everything that leaves.**
+- **No model judges its own work.** A test is challenged by the models that
+  did not write it, and fixed blind by them.
+- **A person checks a sample of every report and approves the send.** Nothing
+  goes upstream without their explicit approval.
 
 ## Three separate parts
 
@@ -204,11 +208,35 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    control all count as `blocked`, never as a reproduction. Groups become
    finding records with stable IDs (`QOT-` plus a hash of repository and
    fingerprint).
-7. **Human triage.** `triage.md` lists the main queue with all evidence and
-   every verdict, and the low-priority list in brief. The reviewer records a
-   decision (accept, reject, duplicate, defer, investigate) and a severity per
-   finding in `decisions.yaml`.
-8. **Fixes.** For accepted findings only. The first available model proposes
+7. **Gates, by rule** (`gates.json`). No model is involved. The test must
+   fail on an assertion, or with an exception raised in the project's own
+   code while its control passes; fail the same way on 20 fresh reruns; and
+   still fail on the project's current default branch, fetched fresh on every
+   run. The newest release tag is checked for information.
+8. **Challenge** (`challenge.json`, skill `challenge-test`). Every configured
+   model except the test's author tries to show the test is wrong: its
+   expectation unsupported, its failure for another reason, or its target
+   something else. Challengers do not see who found the claim, who wrote the
+   test, or other verdicts. Refuted needs a cited invalid verdict (a weak
+   control alone does not refute); upheld needs every challenger to say
+   valid; anything else, including a challenger that could not run, is
+   unsettled.
+9. **Blind fix** (`fixgate.json`, skill `blind-fix`). The same non-author
+   models see only the claim, never the test. Each says whether the claim
+   holds and, if so, writes the smallest fix, without touching tests. The fix
+   counts if the hidden test then passes, its control still passes, and no
+   test in the touched packages newly fails (by test id, before and after).
+   A passing blind fix shows the test and the claim are consistent; it cannot
+   show the claim's expectation is right, because the fixer works from the
+   same claim.
+10. **Tiered report.** Each finding goes in a section by rule: likely defects
+   (upheld, confirmed, no fixer doubting it), where the models disagree,
+   claims that could not be tested, probably not defects (refuted and not
+   confirmed), already fixed upstream, and known dependency advisories.
+   Newly found security issues are counted only. A person checks a sample
+   and approves the send.
+11. **Fixes for accepted findings** (the earlier flow, when a person accepts
+   findings in `decisions.yaml`; `triage.md` lists them). The first available model proposes
    exact search-and-replace edits (model-written diffs are often malformed).
    The harness applies them to a temporary clone, refusing paths outside the
    repository and old text that does not occur exactly once, and takes the
@@ -224,8 +252,9 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    and shown in the review. Non-security fixes get a planned branch
    `review/2026-10/<finding-id>`, which is not pushed until a person approves
    that branch. Security fixes are only ever exported as a private `.patch`.
-9. **Publish.** A separate process renders the per-repository Report from
-   accepted findings only, runs the sensitive-content check, and writes the
+12. **Publish.** A separate process renders the per-repository Report (the
+   tiered report and its evidence document when the run has gates; otherwise
+   from accepted findings only), runs the sensitive-content check, and writes the
    local outbox. With `qot publish --live` it also uploads to Marqov, to two
    separately configured targets (`publish.marqov` in `config/harness.yaml`),
    each with its own Project id and key file. Per repository, a Workspace
@@ -280,18 +309,21 @@ finding.
 
 ## Reports
 
-A Report contains a header (repository, commit, date, models and versions,
-tools and their status, scope, completion), a scorecard with counts in four
-categories (newly found security vulnerabilities, known dependency
-advisories, correctness defects, and documentation, test and maintenance
-defects), the triage list, finding details for non-security findings, and how
-the report was produced.
+A run with gates produces two documents per repository. The **report** has a
+summary, a table per section and a short card per finding: who found it, every
+source's proposed severity, the gates, challenge and blind-fix outcomes, each
+model's view, and a box for the maintainer's verdict (real, not real, or
+intended). It ends with how each model did, measured against the other checks.
+The **evidence** document holds each test, its control, the blind fix and any
+earlier hand-made fix. Claims that came from earlier hand review are shown
+through the verified test's expectation, not the reviewer's working notes.
 
-Security rows show only an ID, the severity a person set, and the date
-reported privately. Before writing, an automated check blocks the output if it
-finds the exact location, title or claim of any sensitive finding,
-secret-like values, exploit wording or email addresses. It is a backstop: a
-person still reads every public title and summary.
+Newly found security issues appear only as a count. Known dependency
+advisories are already public and are shown in full in the team's private
+report. Before writing, an automated check blocks the shared documents if they
+contain the exact location, title or claim of a sensitive finding, secret-like
+values, exploit wording or email addresses. It is a backstop: a person still
+reads every public title and summary.
 
 We describe runs as *recorded, integrity-checkable and rerunnable*. We do not
 claim that a rerun gives identical model answers.
@@ -319,6 +351,9 @@ Works and tested:
 - Retries with backoff when a provider is at capacity, and reruns of those
   units on resume.
 - Earlier work by the reviewer read as evidence (`prior-work.yaml`).
+- The gates (with a fresh fetch of upstream on every run), the test
+  challenge, the blind-fix gate and the tiered report, run end to end on
+  mitiq in November 2026.
 - Live Marqov publishing, tested against an in-process fake of the Project
   API; the read-only checks were run against the live API.
 
@@ -337,6 +372,11 @@ Stubbed or not built yet:
   extensions cannot import them from the source copy (the installed copy is
   removed), so its suite fails at import and is reported as such.
 - **OpenSSF Scorecard** is recorded as unavailable.
+- **Antigravity's sandbox** refuses some file reads and commands, and the CLI
+  then ends its turn without an answer. Those units are recorded as failed
+  (shown as "did not answer"), and a retry hits the same refusal.
+- **Findings without a test**, such as CI or configuration claims, rest on
+  the models' verdicts; the report puts them in their own section.
 - **Team membership** cannot be read with a Marqov API key, so the
   single-member condition for per-repository documents in the hub is a
   recorded statement by a person, not a check.

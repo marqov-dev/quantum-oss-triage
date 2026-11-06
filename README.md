@@ -2,9 +2,12 @@
 
 This project aims to create an open method and harness for multi-model AI review of open-source quantum computing repositories. 
 
-The process uses a mixture of sandboxed deterministic review cycles, and then patches in several AI models to review a repository independently,
-check each other's claims, and hand a ranked, evidenced list to a real human, who
-checks every finding before anything reaches a maintainer.
+The process combines sandboxed fixed-rule scanners with several AI models that
+review a repository independently and then check each other's work: other models
+verify each claim, a test must fail reliably on the project's current code, the
+models that did not write the test try to break it, and models that never saw
+the test try to fix the bug blind. Each finding lands in a section of the report
+by the strength of that evidence. A person checks a sample and approves the send.
 
 The value is not in running the AI alone. Maintainers can do that themselves. It is
 in the systematic approach, and in reviewing and auditing that make the output safe to act on.
@@ -36,8 +39,8 @@ for review, not that its maintainers are involved or have endorsed the work.
 
 | Path | What it is |
 | --- | --- |
-| `skills/` | Review instructions in the open Agent Skills format (a folder with `SKILL.md`): `review-security`, `review-correctness`, `review-docs`, `review-quantum`, `verify-finding`, `propose-fix`, `verify-fix`. |
-| `schemas/` | JSON Schemas for model output (`review-output`, `verdict`, `fix-output`), the stored finding record (`finding`) and the run manifest (`run`). |
+| `skills/` | Review instructions in the open Agent Skills format (a folder with `SKILL.md`): `review-security`, `review-correctness`, `review-docs`, `review-quantum`, `verify-finding`, `challenge-test`, `blind-fix`, `propose-fix`, `verify-fix`. |
+| `schemas/` | JSON Schemas for model output (`review-output`, `verdict`, `test-challenge`, `blind-fix-output`, `fix-output`), the stored finding record (`finding`) and the run manifest (`run`). |
 | `harness/` | The Python harness: `controller/` (scheduling, schema checks, evidence), `adapters/` (Claude Code, Codex, Antigravity), `workers/` (disposable containers), `scanners/` (fixed, non-AI tools), `stages/`, `publish/`. |
 | `evaluations/` | The evaluation set: planted bugs, harmless code that looks suspicious, and a hostile repository. |
 | `docker/worker.Dockerfile` | The credential-free worker image. |
@@ -62,9 +65,10 @@ uv run qot evaluate          # the full pipeline on the evaluation set
 uv run pytest                # the harness's own tests
 ```
 
-`qot run` reviews the repositories listed in `config/repos.yaml`. Decisions go
-in each repository's `decisions.yaml`. `qot triage-apply` records them, and
-`qot publish` renders the reports (a dry run unless given `--live`). See
+`qot run` reviews the repositories listed in `config/repos.yaml`, through the
+gates, the challenge and the blind-fix stage. `qot publish` renders each
+repository's tiered report and evidence document (a dry run unless given
+`--live`). See
 [docs/SETUP.md](docs/SETUP.md).
 
 ## How the models are accessed
