@@ -77,3 +77,67 @@ def test_best_attempt_prefers_assertion_over_crash(tmp_path):
     d, _, ev = gates._best_attempt(tmp_path)
     assert ev == "assertion" and d.name == "1"
     assert gates._best_attempt(tmp_path / "missing") == (None, "", "none")
+
+
+def _git(*args, cwd):
+    import subprocess
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True,
+                   capture_output=True)
+
+
+def _commit(repo, name, tag=None):
+    (repo / name).write_text(name)
+    _git("add", ".", cwd=repo)
+    _git("commit", "-qm", name, cwd=repo)
+    if tag:
+        _git("tag", tag, cwd=repo)
+
+
+def test_checkout_follows_upstream_on_every_run(tmp_path):
+    """The head and release checks must use upstream as it is now, not a clone from an earlier run."""
+    from types import SimpleNamespace
+    up = tmp_path / "upstream"
+    up.mkdir()
+    _git("init", "-q", "-b", "main", cwd=up)
+    _commit(up, "a", tag="v1")
+    ctx = SimpleNamespace(repo_dir=tmp_path / "run", spec=SimpleNamespace(source=str(up)))
+    head1 = gates._checkout(ctx, "head")[1]
+    rel1 = gates._checkout(ctx, "release")[1]
+    assert head1 == rel1
+    _commit(up, "b", tag="v2")
+    _commit(up, "c")
+    head2 = gates._checkout(ctx, "head")[1]
+    rel2 = gates._checkout(ctx, "release")[1]
+    assert head2 != head1 and (ctx.repo_dir / "gates" / "head" / "source" / "c").exists()
+    assert rel2 not in (rel1, head2)  # the newest tag, v2
+
+
+def test_cached_gate_rechecks_only_the_trees_that_moved(tmp_path):
+    """A rerun with a new upstream head repeats the head check, not the twenty reruns."""
+    from types import SimpleNamespace
+    from harness.controller.ledger import Ledger
+    from harness.workers.base import WorkerResult
+    run_dir = tmp_path / "run"
+    attempt = run_dir / "o__r" / "evidence" / "repro" / "QOT-1" / "0"
+    attempt.mkdir(parents=True)
+    (attempt / "output.txt").write_text(ASSERT)
+    scripts = []
+    reruns = "".join(f"QOT_RUN {i} 0 1 E       assert -1 == 5\n" for i in range(1, gates.RERUNS + 1))
+
+    def run(script, src, inputs=None, timeout_s=0):
+        scripts.append(script)
+        if "seq" in script:
+            return WorkerResult(0, reruns, "")
+        fixed = "new" in str(src)
+        return WorkerResult(0, HEAD.replace("REPRO_RC=1", "REPRO_RC=0") if fixed else ASSERT, "")
+
+    ctx = SimpleNamespace(run_dir=run_dir, repo_dir=run_dir / "o__r", spec=SimpleNamespace(name="o/r"),
+                          ledger=Ledger(tmp_path), worker=SimpleNamespace(run=run), source_dir=tmp_path)
+    f = {"id": "QOT-1", "validation": {"status": "reproduced"}}
+    first = gates.gate_one(ctx, f, {"head": (tmp_path / "old", "c1")})
+    assert first["verdict"] == "passed" and len(scripts) == 2
+    again = gates.gate_one(ctx, f, {"head": (tmp_path / "old", "c1")})
+    assert again == first and len(scripts) == 2
+    moved = gates.gate_one(ctx, f, {"head": (tmp_path / "new", "c2")})
+    assert len(scripts) == 3 and "seq" not in scripts[2]
+    assert moved["head"] == {"commit": "c2", "outcome": "passes"} and moved["verdict"] == "failed"

@@ -97,18 +97,25 @@ def verdict(ev: str, stable: dict | None, head: str | None) -> tuple[str, str]:
 
 
 def _checkout(ctx: RepoContext, where: str) -> tuple[Path, str] | None:
-    """A clone of the project's default branch head ('head') or its latest release tag ('release')."""
+    """Upstream's default branch head ('head') or its newest release tag ('release'), as it is now.
+
+    The clone is kept between runs, but every call fetches first, so a check never
+    uses a copy of upstream from an earlier run.
+    """
     root = ctx.repo_dir / "gates" / where
     src = root / "source"
     if not src.exists():
         root.mkdir(parents=True, exist_ok=True)
         pin.git(["clone", "--no-recurse-submodules", "--quiet", ctx.spec.source, str(src)])
-        if where == "release":
-            try:
-                tag = pin.git(["describe", "--tags", "--abbrev=0"], cwd=src)
-            except RuntimeError:  # no tags: there is no release to check
-                return None
-            pin.git(["checkout", "--quiet", "--detach", tag], cwd=src)
+    pin.git(["fetch", "--quiet", "--force", "--tags", "--prune", "origin"], cwd=src)
+    pin.git(["remote", "set-head", "origin", "--auto"], cwd=src)
+    target = "origin/HEAD"
+    if where == "release":
+        try:
+            target = pin.git(["describe", "--tags", "--abbrev=0", "origin/HEAD"], cwd=src)
+        except RuntimeError:  # no tags: there is no release to check
+            return None
+    pin.git(["checkout", "--quiet", "--force", "--detach", target], cwd=src)
     return src, pin.git(["rev-parse", "HEAD"], cwd=src)
 
 
@@ -124,24 +131,38 @@ def _best_attempt(root: Path) -> tuple[Path | None, str, str]:
     return None, "", "none"
 
 
+def _check_trees(ctx: RepoContext, result: dict, inputs: Path, trees: dict, only: set | None = None) -> None:
+    for where, (src, commit) in trees.items():
+        if only is not None and where not in only:
+            continue
+        r = ctx.worker.run(repro_script(), src, inputs=inputs, timeout_s=300)
+        (inputs / f"gates-{where}.txt").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr)
+        result[where] = {"commit": commit, "outcome": still_present(r.stdout, r.timed_out, result["evidence"],
+                                                                    result["signature"])}
+
+
 def gate_one(ctx: RepoContext, f: dict, trees: dict) -> dict:
     unit = ctx.ledger.unit(ctx.spec.name, "gates", f["id"], None)
     if unit.done():
-        return unit.payload()
-    inputs, out, ev = _best_attempt(ctx.repo_dir / "evidence" / "repro" / f["id"])
-    ref = str(inputs.relative_to(ctx.run_dir)) if inputs else None
-    result = {"id": f["id"], "validation": f["validation"]["status"], "evidence": ev, "evidence_ref": ref}
-    if ev != "none":
-        sig = signature(out)
-        r = ctx.worker.run(rerun_script(RERUNS), ctx.source_dir, inputs=inputs, timeout_s=60 * RERUNS)
-        (inputs / "gates-reruns.txt").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr)
-        result["signature"] = sig
-        result["stability"] = stability(r.stdout, sig, RERUNS, r.timed_out)
-        for where, (src, commit) in trees.items():
-            r = ctx.worker.run(repro_script(), src, inputs=inputs, timeout_s=300)
-            (inputs / f"gates-{where}.txt").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr)
-            result[where] = {"commit": commit, "outcome": still_present(r.stdout, r.timed_out, ev, sig)}
-    result["verdict"], result["reason"] = verdict(ev, result.get("stability"),
+        result = unit.payload()
+        # Upstream may have moved since this was checked: repeat only the checks
+        # whose tree changed. The reruns are against the pinned commit and stand.
+        moved = {w for w, (_, c) in trees.items() if (result.get(w) or {}).get("commit") != c}
+        if result["evidence"] == "none" or not moved:
+            return result
+        _check_trees(ctx, result, ctx.run_dir / result["evidence_ref"], trees, moved)
+    else:
+        inputs, out, ev = _best_attempt(ctx.repo_dir / "evidence" / "repro" / f["id"])
+        ref = str(inputs.relative_to(ctx.run_dir)) if inputs else None
+        result = {"id": f["id"], "validation": f["validation"]["status"], "evidence": ev, "evidence_ref": ref}
+        if ev != "none":
+            sig = signature(out)
+            r = ctx.worker.run(rerun_script(RERUNS), ctx.source_dir, inputs=inputs, timeout_s=60 * RERUNS)
+            (inputs / "gates-reruns.txt").write_text(r.stdout + "\n--- stderr ---\n" + r.stderr)
+            result["signature"] = sig
+            result["stability"] = stability(r.stdout, sig, RERUNS, r.timed_out)
+            _check_trees(ctx, result, inputs, trees)
+    result["verdict"], result["reason"] = verdict(result["evidence"], result.get("stability"),
                                                   (result.get("head") or {}).get("outcome"))
     unit.save("done", result)
     return result
