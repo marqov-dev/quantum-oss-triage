@@ -38,7 +38,8 @@ class FakeAPI:
 
     def __call__(self, req, timeout=0):
         assert req.get_header("Authorization") == f"Bearer {KEY}"
-        body = json.loads(req.data) if req.data else None
+        multipart = (req.get_header("Content-type") or "").startswith("multipart/form-data")
+        body = json.loads(req.data) if req.data and not multipart else None
         path = req.full_url.split("app.marqov.ai", 1)[1]
         self.calls.append((req.get_method(), path, body, req.get_header("Idempotency-key")))
         if self.fail_first_with:
@@ -78,8 +79,19 @@ class FakeAPI:
         if m == "POST" and re.fullmatch(r"/api/projects/[0-9a-f-]{36}/blocks", path):
             bid = str(uuid.uuid4())
             self.blocks[bid] = {"id": bid, "document_id": body["document_id"], "block_type": "markdown",
-                                "content": body["content"]}
+                                "content": body["content"], "position": body.get("position", 0)}
             return _resp(self.blocks[bid])
+        if m == "POST" and re.fullmatch(r"/api/projects/[0-9a-f-]{36}/blocks/image", path):
+            import hashlib
+            fields = dict(re.findall(rb'name="(\w+)"\r\n\r\n([^\r]*)\r\n', req.data))
+            data = req.data.split(b"\r\n\r\n", 3)[-1].rsplit(b"\r\n--", 1)[0]
+            bid = str(uuid.uuid4())
+            self.blocks[bid] = {"id": bid, "document_id": fields[b"document_id"].decode(), "block_type": "image",
+                                "content": None, "position": int(fields[b"position"]),
+                                "image_digest": hashlib.sha256(data).hexdigest()}
+            return _resp({"block": self.blocks[bid]})
+        if m == "DELETE" and mm:
+            return _resp(self.blocks.pop(mm.group(1)))
         raise AssertionError(f"unexpected {m} {path}")
 
     def writes(self):
@@ -349,3 +361,58 @@ def test_hub_only_documents_skip_the_membership_check(tmp_path):
     api = FakeAPI(members=5)
     out = publish_live([hub_doc()], hub_for_everything(tmp_path), lambda kp: client(api), tmp_path / "r.json")
     assert out[0]["status"] == "created" and ("GET", "/api/team/members", None, None) not in api.calls
+
+
+def parted(tmp_path, text="Card one."):
+    img = tmp_path / "chart.png"
+    img.write_bytes(b"\x89PNG fake chart bytes")
+    parts = [("markdown", "# review"), ("image", img), ("markdown", text)]
+    return PlannedDoc("org/repo:report", "report", "org/repo: review", f"# review\n\n{text}", [], share=True,
+                      repo="org/repo", parts=parts)
+
+
+def blocks_of(api, doc_id):
+    return sorted((b for b in api.blocks.values() if b["document_id"] == doc_id), key=lambda b: b.get("position", 0))
+
+
+def test_a_document_is_written_as_several_blocks_with_images(tmp_path):
+    api, rec = FakeAPI(), tmp_path / "rec.json"
+    out = publish_live([parted(tmp_path)], targets(tmp_path), lambda kp: client(api), rec)
+    assert out[0]["status"] == "created", out
+    bl = blocks_of(api, out[0]["document_id"])
+    assert [b["block_type"] for b in bl] == ["markdown", "image", "markdown"] and bl[2]["content"] == "Card one."
+    again = publish_live([parted(tmp_path)], targets(tmp_path), lambda kp: client(api), rec)
+    assert again[0]["status"] == "unchanged"
+
+
+def test_an_earlier_one_block_upload_is_replaced_in_the_same_document(tmp_path):
+    api, rec = FakeAPI(), tmp_path / "rec.json"
+    first = publish_live(docs()[1:], targets(tmp_path), lambda kp: client(api), rec)
+    doc_id = first[0]["document_id"]
+    out = publish_live([parted(tmp_path)], targets(tmp_path), lambda kp: client(api), rec)
+    assert out[0]["status"] == "updated" and out[0]["document_id"] == doc_id  # share links keep working
+    assert len(blocks_of(api, doc_id)) == 3
+    changed = publish_live([parted(tmp_path, "Card one, revised.")], targets(tmp_path), lambda kp: client(api), rec)
+    assert changed[0]["status"] == "updated" and blocks_of(api, doc_id)[2]["content"] == "Card one, revised."
+
+
+def test_blocks_edited_in_the_web_app_are_not_overwritten(tmp_path):
+    api, rec = FakeAPI(), tmp_path / "rec.json"
+    out = publish_live([parted(tmp_path)], targets(tmp_path), lambda kp: client(api), rec)
+    blocks_of(api, out[0]["document_id"])[2]["content"] = "A maintainer's note."
+    again = publish_live([parted(tmp_path, "New text.")], targets(tmp_path), lambda kp: client(api), rec)
+    assert again[0]["status"] == "skipped" and "edited in the web app" in again[0]["reason"]
+    assert blocks_of(api, out[0]["document_id"])[2]["content"] == "A maintainer's note."
+
+
+def test_back_to_top_links_point_at_the_first_section(tmp_path):
+    api, rec = FakeAPI(), tmp_path / "rec.json"
+    parts = [("markdown", "# review"), ("markdown", "## At a glance"), ("markdown", "Text."),
+             ("markdown", "[↑ Back to top](#{{top}})")]
+    doc = PlannedDoc("org/repo:report", "report", "org/repo: review", "\n\n".join(v for _, v in parts), [],
+                     share=True, repo="org/repo", parts=parts)
+    out = publish_live([doc], targets(tmp_path), lambda kp: client(api), rec)
+    bl = blocks_of(api, out[0]["document_id"])
+    assert bl[3]["content"] == f"[↑ Back to top](#section-{bl[1]['id']})"
+    again = publish_live([doc], targets(tmp_path), lambda kp: client(api), rec)
+    assert again[0]["status"] == "unchanged"

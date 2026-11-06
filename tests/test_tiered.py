@@ -100,3 +100,12 @@ def test_publish_writes_report_and_evidence_without_security_details(tmp_path):
     md, ev = (out / "report.md").read_text(), (out / "evidence.md").read_text()
     assert "Likely defects (1)" in md and "GHSA-xxxx in numpy" in md and "SECRET" not in md + ev
     assert "assert add(2, 3) == 5" in ev and [d.key for d in res["docs"]][-1] == "o/r:evidence"
+
+
+def test_every_heading_is_its_own_block_so_the_contents_sidebar_lists_it(tmp_path):
+    r = tiered.build(_manifest(), [f()], [], {"findings": [{"id": "QOT-1", "verdict": "no_evidence"}]}, {}, {}, tmp_path)
+    parts = tiered.to_blocks(r)
+    h2 = [v for _, v in parts if v.lstrip().startswith("## ") or "\n## " in v]
+    assert h2 and all(v.count("\n") == 0 for v in h2)
+    assert parts[-1][1].endswith("](#{{top}})") and "marqov.ai/request-access" in parts[-1][1]
+    assert tiered.bar(47, 47) == "▇" * tiered.BAR_WIDTH and tiered.bar(1, 47) == "▇" and tiered.bar(0, 47) == ""

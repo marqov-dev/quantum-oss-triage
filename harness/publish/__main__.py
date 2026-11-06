@@ -21,30 +21,33 @@ from harness.publish import github, marqov, redact, render, tiered
 
 def publish_tiered(run_dir: Path, repo_dir: Path, outbox: Path, manifest: dict, findings: list[dict],
                    scans: dict) -> tuple[bool, dict]:
-    """The report sorted by evidence (no per-finding decisions). Security details stay out;
-    known dependency advisories are shown in full (docs/DISCLOSURE.md)."""
+    """The report sorted by evidence (no per-finding decisions), as several Marqov blocks.
+    Security details stay out; known dependency advisories are shown in full
+    (docs/DISCLOSURE.md)."""
     report = tiered.load(run_dir, repo_dir)
-    md, evidence = tiered.to_markdown(report), tiered.to_evidence_markdown(report)
-    page = render.markdown_to_html(md, report["title"])
+    d = outbox / repo_dir.name
+    d.mkdir(parents=True, exist_ok=True)
+    parts, ev_parts = tiered.to_blocks(report), tiered.to_evidence_blocks(report)
+    text = lambda ps: "\n\n".join(v for k, v in ps if k == "markdown")
+    md, evidence = text(parts), text(ev_parts)
     workspace = marqov.workspace_document(manifest, scans)
     sensitive = [f for f in findings if f["sensitivity"]["sensitive"] and f["category"] != "dependency_advisory"]
     # Check exactly what is shared: the two documents and the workspace record.
     problems = redact.check(md + "\n" + evidence + "\n" + marqov.workspace_markdown(workspace), sensitive)
-    d = outbox / repo_dir.name
-    d.mkdir(parents=True, exist_ok=True)
     if problems:
         (d / "BLOCKED.txt").write_text("Not written: the sensitive-content check found:\n" + "\n".join(problems) + "\n")
         return False, {"repo": manifest["repo"]["name"], "blocked": problems}
-    marqov.write_local(outbox, repo_dir.name, workspace, report, md, page)
-    (d / "evidence.md").write_text(evidence)
+    local_md = tiered.blocks_markdown(parts)
+    marqov.write_local(outbox, repo_dir.name, workspace, report, local_md, render.markdown_to_html(local_md, report["title"]))
+    (d / "evidence.md").write_text(tiered.blocks_markdown(ev_parts))
     (d / "BLOCKED.txt").unlink(missing_ok=True)
     name = manifest["repo"]["name"]
     docs = [marqov.PlannedDoc(f"{name}:workspace", "workspace", workspace["title"], marqov.workspace_markdown(workspace),
                               sensitive, target="repo", repo=name),
             marqov.PlannedDoc(f"{name}:report", "report", report["title"], md, sensitive, share=True,
-                              target="repo", repo=name),
+                              target="repo", repo=name, parts=parts),
             marqov.PlannedDoc(f"{name}:evidence", "report", f"{report['title']}: evidence", evidence, sensitive,
-                              share=True, target="repo", repo=name)]
+                              share=True, target="repo", repo=name, parts=ev_parts)]
     return True, {"repo": name, "written": str(d), "report": report, "docs": docs, "sensitive": sensitive}
 
 
