@@ -147,7 +147,10 @@ code,pre{background:var(--code);border-radius:4px;font-size:13px}pre{padding:12p
 
 def to_html(r: dict) -> str:
     """A self-contained HTML page with no external resources."""
-    md = to_markdown(r)
+    return markdown_to_html(to_markdown(r), r["title"])
+
+
+def markdown_to_html(md: str, title: str) -> str:
     body, in_code, in_table = [], False, False
     for line in md.splitlines():
         if line.startswith("```"):
@@ -186,7 +189,7 @@ def to_html(r: dict) -> str:
     if in_table:
         body.append("</table>")
     return (f"<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>{html.escape(r['title'])}</title><style>{_CSS}</style><main>" + "\n".join(body) + "</main></html>\n")
+            f"<title>{html.escape(title)}</title><style>{_CSS}</style><main>" + "\n".join(body) + "</main></html>\n")
 
 
 def _inline(text: str) -> str:
