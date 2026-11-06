@@ -52,6 +52,20 @@ class DockerWorker(Worker):
         self.image, self.cpus, self.memory, self.pids = image, cpus, memory, pids
         self.work_size, self.tmp_size, self.docker = work_size, tmp_size, docker
         self.deps_dir: Path | None = None
+        self.platform: str | None = None
+        self.base_image = image
+
+    def for_platform(self, platform: str | None) -> "DockerWorker":
+        """The same worker, running containers as `platform` with that platform's image
+        (the configured tag plus "-<arch>", e.g. quantum-oss-triage-worker:dev-amd64)."""
+        if not platform:
+            return self
+        w = copy.copy(self)
+        w.platform, w.image = platform, f"{self.base_image}-{platform.split('/')[-1]}"
+        return w
+
+    def _plat(self) -> list[str]:
+        return ["--platform", self.platform] if self.platform else []
 
     def with_deps(self, deps_dir: Path) -> "DockerWorker":
         w = copy.copy(self)
@@ -67,7 +81,8 @@ class DockerWorker(Worker):
         except subprocess.TimeoutExpired:
             return False, "docker daemon not responding"
         if r.returncode != 0:
-            return False, f"image {self.image} not built (docker build -f docker/worker.Dockerfile -t {self.image} .)"
+            build = f"docker build{' --platform ' + self.platform if self.platform else ''} -f docker/worker.Dockerfile -t {self.image} ."
+            return False, f"image {self.image} not built ({build})"
         return True, r.stdout.strip()
 
     def describe(self) -> dict:
@@ -79,7 +94,7 @@ class DockerWorker(Worker):
         cap = MAX_OUTPUT_BYTES
         wrapper = _WRAPPER % (script, cap, cap, cap, cap)
         cmd = [
-            self.docker, "run", "--rm", "--name", name,
+            self.docker, "run", *self._plat(), "--rm", "--name", name,
             "--network", "bridge" if network else "none",
             "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", str(self.pids), "--memory", self.memory, "--memory-swap", self.memory,
@@ -128,14 +143,14 @@ class DockerWorker(Worker):
             subprocess.run([d, "run", "-d", "--rm", "--name", proxy, "--network", net,
                             "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                             "--user", "65534:65534", "--memory", "256m", "--pids-limit", "64",
-                            "-v", f"{PROXY_SCRIPT}:/proxy.py:ro", self.image,
+                            "-v", f"{PROXY_SCRIPT}:/proxy.py:ro", self.base_image,
                             "python", "/proxy.py", str(PROXY_PORT), *self.registry_hosts()],
                            check=True, capture_output=True, timeout=60)
             subprocess.run([d, "network", "connect", "bridge", proxy], check=True, capture_output=True, timeout=60)
             cap = MAX_OUTPUT_BYTES
             wrapper = _WRAPPER % (script, cap, cap, cap, cap)
             url = f"http://{proxy}:{PROXY_PORT}"
-            cmd = [d, "run", "--rm", "--name", name, "--network", net,
+            cmd = [d, "run", *self._plat(), "--rm", "--name", name, "--network", net,
                    "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                    "--pids-limit", str(self.pids), "--memory", "4g", "--memory-swap", "4g", "--cpus", self.cpus,
                    "--user", "65534:65534",

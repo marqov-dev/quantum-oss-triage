@@ -20,8 +20,11 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from harness.stages import deps
 from harness.controller.context import RepoContext
 from harness.stages import pin
+from harness.scanners import tool_versions
+from harness.scanners.osv import OsvScanner
 from harness.stages.validate import _ASSERTION, _NOT_A_REPRO, _PYTEST, judge, repro_script
 
 RERUNS = 20
@@ -168,9 +171,58 @@ def gate_one(ctx: RepoContext, f: dict, trees: dict) -> dict:
     return result
 
 
+_ADVISORY = re.compile(r"^Known advisory in dependency (\S+) (\S+)$")
+
+
+def _head_versions(src: Path) -> dict[str, str]:
+    """Package versions in the head tree's uv.lock, when it has one."""
+    import tomllib
+    try:
+        lock = tomllib.loads((src / "uv.lock").read_text())
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return {}
+    return {p["name"].lower(): p.get("version") for p in lock.get("package", []) if p.get("name")}
+
+
+def recheck_advisories(ctx: RepoContext, findings: list[dict], trees: dict) -> list[dict]:
+    """Scan upstream's current head for the same advisories. One that no longer appears
+    there for that package is reported as resolved on the default branch."""
+    advisories = [f for f in findings if f.get("category") == "dependency_advisory"]
+    if not advisories or "head" not in trees:
+        return []
+    src, commit = trees["head"]
+    unit = ctx.ledger.unit(ctx.spec.name, "gates-osv", commit[:12], None)
+    if unit.done():
+        leads = unit.payload()["leads"]
+    else:
+        r = OsvScanner().run(ctx.worker, src, tool_versions(ctx.worker, src))
+        if r.status not in ("ok", "not_applicable"):
+            return [{"id": f["id"], "head": "unknown", "note": r.note[:200]} for f in advisories]
+        leads = [{"title": x["title"], "ids": x["rule_id"].split(",")} for x in r.findings]
+        unit.save("done", {"leads": leads})
+    at_head: dict[str, set] = {}
+    for x in leads:
+        if m := _ADVISORY.match(x["title"]):
+            at_head.setdefault(m.group(1).lower(), set()).update(x["ids"])
+    versions = _head_versions(src)
+    out = []
+    for f in advisories:
+        m = _ADVISORY.match(f["title"])
+        if not m:
+            continue
+        pkg, ids = m.group(1).lower(), {i for d in f["detection"]["detections"]
+                                    for i in (d.get("rule_id") or "").split(",") if i}
+        present = bool(ids & at_head.get(pkg, set()))
+        out.append({"id": f["id"], "head": "present" if present else "resolved",
+                    "head_version": versions.get(pkg)})
+    return out
+
+
 def run(ctx: RepoContext) -> list[dict]:
     findings = ctx.read_json("findings.json", [])
     worker_ok, why = ctx.worker.available() if ctx.worker else (False, "no worker")
+    if worker_ok and (problem := deps.environment_problem(ctx)):
+        worker_ok, why = False, problem
     if not worker_ok:
         ctx.manifest.incomplete(f"gates: worker unavailable: {why}")
         return []
@@ -184,7 +236,8 @@ def run(ctx: RepoContext) -> list[dict]:
         results = list(pool.map(lambda f: gate_one(ctx, f, trees), todo))
     ctx.write_json("gates.json", {"pinned_commit": ctx.commit or None,
                                   "trees": {w: c for w, (_, c) in trees.items()},
-                                  "reruns": RERUNS, "findings": results})
+                                  "reruns": RERUNS, "findings": results,
+                                  "advisories": recheck_advisories(ctx, findings, trees)})
     counts: dict[str, int] = {}
     for r in results:
         counts[r["verdict"]] = counts.get(r["verdict"], 0) + 1

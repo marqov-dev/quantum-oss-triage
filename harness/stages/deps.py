@@ -115,6 +115,15 @@ def script(p: dict) -> str:
     return "\n".join(lines)
 
 
+def environment_problem(ctx: RepoContext) -> str | None:
+    """Why the project's code cannot be run here, or None. Stages that run project code
+    (validate, gates, blind fix, fix) check this; scanners do not need the environment."""
+    rec = ctx.ledger.unit(ctx.spec.name, "deps", None, None).load()
+    if rec and (rec.get("payload") or {}).get("status") == "failed":
+        return "the project's dependencies failed to install (details in the private run record)"
+    return None
+
+
 def run(ctx: RepoContext) -> None:
     deps_dir = ctx.repo_dir / "deps"
     unit = ctx.ledger.unit(ctx.spec.name, "deps", None, None)
@@ -146,6 +155,10 @@ def run(ctx: RepoContext) -> None:
     project_packages = [x for x in packages if x.split("==")[0].lower() not in tooling]
     venv = venv_installed(deps_dir)
     status = "ok" if r.ok else ("partial" if venv and r.exit_code not in (90, 91) else "failed")
+    # Nothing of the project installed (no project packages, and the project step failed):
+    # tests would only measure the missing environment, so this is a failure, not partial.
+    if status == "partial" and not project_packages and "QOT-FAIL project" in r.stdout:
+        status = "failed"
     denied = sorted({d.get("request", "")[:120] for d in r.proxy_log if d.get("decision") == "deny"})
     installed_from = ("uv.lock" if "QOT-STEP lock" in r.stdout and "QOT-FAIL lock" not in r.stdout
                       else "resolved from project metadata")

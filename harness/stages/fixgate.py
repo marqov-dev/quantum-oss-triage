@@ -31,6 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
 from harness import secrets
+from harness.stages import deps
 from harness.controller import merge, prompts, skills
 from harness.controller.context import RepoContext
 from harness.stages.fix import EditError, build_diff
@@ -177,6 +178,8 @@ def _done(unit, rec: dict) -> dict:
 
 def run(ctx: RepoContext) -> list[dict]:
     worker_ok, why = ctx.worker.available() if ctx.worker else (False, "no worker")
+    if worker_ok and (problem := deps.environment_problem(ctx)):
+        worker_ok, why = False, problem
     if not worker_ok:
         ctx.manifest.incomplete(f"fixgate: worker unavailable: {why}")
         return []
@@ -212,7 +215,8 @@ def run(ctx: RepoContext) -> list[dict]:
     not_run = sum(x["status"] in _NOT_RUN for _, x in done)
     if not_run:
         ctx.manifest.incomplete(f"fixgate: {not_run} of {len(jobs)} attempts could not run (shown as unsettled)")
-    counts: dict[str, int] = {}
+    # Every outcome is written, zeros included, so counts from an earlier run do not linger.
+    counts: dict[str, int] = dict.fromkeys(("confirmed", "disputed", "unsettled", "not_confirmed"), 0)
     for r in results:
         counts[r["outcome"]] = counts.get(r["outcome"], 0) + 1
     ctx.manifest.stage("fixgate", "complete" if not not_run else "incomplete", attempts=len(jobs),
