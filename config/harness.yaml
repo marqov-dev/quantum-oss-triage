@@ -46,6 +46,11 @@ timeouts:
 # How many AI units may run at once (across models). Keep low on subscriptions.
 parallel: 2
 
+# Models listed here skip scanner and prior-work claims while another model can
+# check them. Empty: every model checks every claim. Add a model only as a stated
+# trade-off, for example when its plan's quota cannot cover a run.
+verify_model_claims_only: []
+
 # Refuse to run a CLI version that has not passed `qot doctor`'s hostile probe.
 require_isolation_attestation: true
 

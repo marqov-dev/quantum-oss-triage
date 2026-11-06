@@ -26,7 +26,7 @@ USAGE_LIMIT_PATTERNS = re.compile(
 )
 # Server-side refusals that say nothing about our own usage, such as Codex's
 # "Selected model is at capacity". Checked only after the usage-limit patterns.
-CAPACITY_PATTERNS = re.compile(r"at capacity|overloaded|server (?:is )?busy|temporarily unavailable", re.IGNORECASE)
+CAPACITY_PATTERNS = re.compile(r"at capacity|no capacity|high traffic|overloaded|server (?:is )?busy|temporarily unavailable", re.IGNORECASE)
 CAPACITY_BACKOFF_S = (30, 120, 300)
 NOT_SIGNED_IN_PATTERNS = re.compile(r"not logged in|authentication failed|not logged into|please run /login|not authenticated|login required|sign in", re.IGNORECASE)
 

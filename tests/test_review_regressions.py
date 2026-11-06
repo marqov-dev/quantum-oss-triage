@@ -77,12 +77,32 @@ def test_distinct_claims_on_one_line_get_distinct_ids(tmp_path):
     class Ctx:
         spec = type("S", (), {"name": "r"})()
         source_dir = tmp_path
+        config = type("C", (), {"verify_model_claims_only": []})()
 
         def model_order(self):
             return []
 
     plans = verify.plan(Ctx(), merge.group([a, b]))
     assert len(plans) == 2 and plans[0]["id"] != plans[1]["id"]
+
+
+def test_three_identical_lines_get_three_ids(tmp_path):
+    from harness.stages import verify
+
+    (tmp_path / "a.yml").write_text("uses: actions/checkout@v6\n" * 3)
+    claims = [{"title": "Unpinned action", "area": "security", "file": "a.yml", "line_start": n, "line_end": n,
+               "claim": "x", "tool": "zizmor", "rule_id": "unpinned-uses", "unit": "u1"} for n in (1, 2, 3)]
+
+    class Ctx:
+        spec = type("S", (), {"name": "r"})()
+        source_dir = tmp_path
+        config = type("C", (), {"verify_model_claims_only": []})()
+
+        def model_order(self):
+            return []
+
+    plans = verify.plan(Ctx(), merge.group(claims))
+    assert len({p["id"] for p in plans}) == 3
 
 
 def test_different_bugs_on_same_lines_from_two_models_stay_apart():

@@ -40,7 +40,7 @@ def requirement_files(src: Path) -> list[str]:
     return sorted(n for n in names if "doc" not in Path(n).name.lower())
 
 
-def plan(src: Path) -> dict:
+def plan(src: Path, install_extras: list[str] | tuple = ()) -> dict:
     src = Path(src)
     out = {"requirements": requirement_files(src), "project": False, "extras": [], "groups": [],
            "lock": None, "workspace": False}
@@ -51,12 +51,13 @@ def plan(src: Path) -> dict:
         except (tomllib.TOMLDecodeError, UnicodeDecodeError):
             data = {}
         # A root with only [build-system] or a uv workspace (no [project]) is not
-        # an installable project; pip would fail on its metadata.
-        if "project" in data:
+        # an installable project; pip would fail on its metadata. Poetry keeps
+        # its metadata in [tool.poetry] instead.
+        if "project" in data or "poetry" in (data.get("tool") or {}):
             out["project"] = True
         out["workspace"] = bool(((data.get("tool") or {}).get("uv") or {}).get("workspace"))
         extras = (data.get("project") or {}).get("optional-dependencies") or {}
-        out["extras"] = [e for e in TEST_EXTRAS if e in extras]
+        out["extras"] = [e for e in (*TEST_EXTRAS, *install_extras) if e in extras]
         groups = data.get("dependency-groups") or {}
         out["groups"] = [g for g in TEST_EXTRAS if g in groups]
     if (src / "setup.py").is_file() or (src / "setup.cfg").is_file():
@@ -123,7 +124,7 @@ def run(ctx: RepoContext) -> None:
             ctx.manifest.incomplete("dependencies: some failed to install (details in the private run record)")
         ctx.worker = ctx.worker.with_deps(deps_dir)
         return
-    p = plan(ctx.source_dir)
+    p = plan(ctx.source_dir, ctx.spec.install_extras)
     if not p["requirements"] and not p["project"] and not p["groups"] and not p.get("lock"):
         result = {"status": "not_applicable", **p, "note": "no requirements files or Python project metadata"}
         unit.save("done", result)

@@ -1,14 +1,22 @@
 """Google Antigravity CLI (agy) adapter.
 
-agy -p "<prompt>" --output-format json --json-schema <file> --mode plan
---sandbox --disable-slash-commands --print-timeout 20m, always inside a hard
-process timeout: print mode has a reported headless hang (issue #318, closed in
+agy -p "<prompt>" --output-format json --json-schema <file>
+--disable-slash-commands --print-timeout 20m, always inside a hard process
+timeout: print mode has a reported headless hang (issue #318, closed in
 September 2026 and reported again since).
 
 Flags checked against `agy --help` for agy 1.4.7. agy reads files with shell
 commands, so it runs in a reviewer sandbox (harness/adapters/sandbox.py) by
 default, with a harness-owned home: the operator's ~/.gemini (user settings,
 permission rules, MCP servers, plugins) is never visible to it.
+
+Three things found by testing agy 1.4.7 in that container. --mode plan does
+nothing alongside --disable-slash-commands, and without that flag the reply is
+a plan, not the verdict. agy's own --sandbox cannot start in the container, so
+every command fails, with or without bubblewrap installed; it is kept only for
+a run outside the container. A command that no rule allows ends the turn with
+status SUCCESS, an empty reply and a `denied_actions` entry, so the sandbox home
+carries an allow-list (AGY_ALLOWED_COMMANDS) and the model is told what is on it.
 """
 
 from __future__ import annotations
@@ -21,6 +29,11 @@ from harness.adapters.sandbox import ReviewerSandbox
 from harness.controller import cleanenv
 
 HARD_TIMEOUT_S = 25 * 60
+
+# Without this, a command outside the allow-list ends the turn with no reply.
+SHELL_NOTE = ("Shell commands are limited to ls, cat, head, tail, wc, grep, nl, pwd and find, joined with pipes or "
+              "&& if needed. Anything else, including python, pytest, sed, git and `find -exec`, ends your turn with "
+              "no reply, so do not try them. The folder has no git history.")
 
 
 class AntigravityAdapter(Adapter):
@@ -46,9 +59,10 @@ class AntigravityAdapter(Adapter):
         # No system-prompt flag: the harness text leads the prompt.
         schema_file = out_file.parent / "schema.json"
         schema_file.write_text(json.dumps(model_schema(schema_name)))
-        cmd = [self.resolved_binary() or self.binary, "-p", f"{system}\n\n{prompt}", "--output-format", "json",
-               "--json-schema", str(schema_file), "--mode", "plan", "--sandbox", "--disable-slash-commands",
-               "--print-timeout", "20m"]
+        cmd = [self.resolved_binary() or self.binary, "-p", f"{system}\n\n{SHELL_NOTE}\n\n{prompt}", "--output-format",
+               "json", "--json-schema", str(schema_file), "--disable-slash-commands", "--print-timeout", "20m"]
+        if self.sandbox is None:
+            cmd.append("--sandbox")
         if self.model:
             cmd += ["--model", self.model]
         return cmd + self.extra_args
@@ -84,4 +98,8 @@ class AntigravityAdapter(Adapter):
             return Parsed(payload, model_id or "agy-default", tokens, None)
         text = next((doc[k] for k in ("response", "result", "output", "text") if isinstance(doc.get(k), str)), None)
         data = extract_json(text) if text is not None else (doc if "findings" in doc or "verdict" in doc else None)
+        if not data and doc.get("denied_actions"):
+            # The same call would be refused again, so it is not worth a retry.
+            return Parsed(None, model_id or "agy-default", tokens, "agy refused a command outside the allow-list",
+                          failed_call=True)
         return Parsed(data, model_id or "agy-default", tokens, None if data else "no JSON in response")

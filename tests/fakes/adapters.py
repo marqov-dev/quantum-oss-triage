@@ -58,6 +58,12 @@ class FakeAdapter(Adapter):
                     "reproduction": self.reproduction if kind == "finding" else None,
                     "fix_assessment": (self.fix_assessment or {"fixes_cause": "yes", "keeps_behaviour": "yes",
                                                                "regression_risk": "low"}) if kind == "fix" else None}
+        elif schema_name == "test-challenge":
+            data = {"verdict": "valid", "problem": "none", "reason": "checked it", "citations": [],
+                    "lines_read": [{"file": "m.py", "line_start": 1, "line_end": 2}]}
+        elif schema_name == "blind-fix-output":
+            data = {"claim_holds": "yes" if self.fix_edits else "unsure", "feasible": bool(self.fix_edits),
+                    "edits": self.fix_edits or [], "summary": "fix", "notes": ""}
         else:
             data = {"feasible": bool(self.fix_edits), "edits": self.fix_edits or [], "summary": "fix", "notes": ""}
         return AdapterResult(True, data, json.dumps(data), f"{self.name}-model-1", tokens, attempts=1)

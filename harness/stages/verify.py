@@ -20,15 +20,27 @@ def plan(ctx: RepoContext, groups: list[list[dict]]) -> list[dict]:
     seen: set[str] = set()
     for g in sorted(groups, key=lambda g: sorted((c["tool"], c.get("rule_id") or "", c["title"]) for c in g)):
         gid = merge.group_key(ctx.spec.name, g, ctx.source_dir)
-        if gid in seen:  # same lines, distinct claims: disambiguate by the representative's rule or title
+        while gid in seen:  # same lines, distinct claims: disambiguate by the representative's rule or title
             rep = merge.representative(g)
             gid = merge.stable_id(ctx.spec.name, f"{gid}|{rep.get('rule_id') or rep['title']}")
         seen.add(gid)
         detectors = {c["tool"] for c in g}
         others = [m for m in models if m not in detectors]
+        if not detectors & merge.MODEL_TOOLS:
+            others = _without_limited(ctx, gid, others)
         verifiers = [(m, "independent") for m in others] or [(m, "same_model") for m in models if m in detectors]
         out.append({"id": gid, "candidates": g, "verifiers": verifiers})
     return out
+
+
+def _without_limited(ctx: RepoContext, gid: str, verifiers: list[str]) -> list[str]:
+    """Scanner and prior-work claims skip a quota-limited model while another model can check them.
+
+    A verdict that model has already given is kept.
+    """
+    limited = set(ctx.config.verify_model_claims_only)
+    kept = [m for m in verifiers if m not in limited or ctx.ledger.unit(ctx.spec.name, "verify", gid, m).done()]
+    return kept if set(kept) - limited else verifiers
 
 
 def run(ctx: RepoContext, candidates: list[dict]) -> list[dict]:

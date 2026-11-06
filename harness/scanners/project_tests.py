@@ -34,7 +34,7 @@ class ProjectTests(Scanner):
         return (True, "") if ok else (False, "no Python tests found")
 
     def script(self) -> str:
-        return ("python -m pytest -q -p no:cacheprovider --no-header -o addopts= -rfE >/tmp/pt.txt 2>&1; rc=$?; "
+        return ("python -m pytest -q -p no:cacheprovider --no-header -o addopts= -rfE --continue-on-collection-errors >/tmp/pt.txt 2>&1; rc=$?; "
                 "tail -n 200 /tmp/pt.txt; exit $rc")
 
     def parse(self, stdout, stderr, exit_code) -> ScanResult:

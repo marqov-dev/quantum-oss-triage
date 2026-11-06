@@ -105,6 +105,14 @@ skill_search = false
 tool_suggest = false
 """
 
+# agy checks each command in a pipe or && chain against these and refuses
+# `find -exec`, `find -delete`, `;` and `$(...)`. No interpreter, and nothing that
+# writes. `git grep` fails on the review copy, which has no .git, but it fails
+# with an error the model can recover from; a refusal ends the turn.
+AGY_ALLOWED_COMMANDS = ("ls", "cat", "head", "tail", "wc", "grep", "nl", "pwd", "find", "git grep")
+AGY_SETTINGS = json.dumps({"trustedWorkspaces": [],
+                           "permissions": {"allow": [f"command({c})" for c in AGY_ALLOWED_COMMANDS]}}) + "\n"
+
 SPECS = {
     "codex": CliSpec(
         cli="codex", target="codex",
@@ -119,7 +127,7 @@ SPECS = {
         auth_files=(),
         personal_auth=(),  # macOS keeps the agy sign-in in the keychain: nothing to copy
         login_cmd=("agy", "-p", "Reply with the single word OK.", "--output-format", "text"),
-        harness_files={".gemini/antigravity-cli/settings.json": '{"trustedWorkspaces": []}\n'},
+        harness_files={".gemini/antigravity-cli/settings.json": AGY_SETTINGS},
     ),
 }
 

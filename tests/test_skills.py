@@ -16,7 +16,7 @@ def test_skill_treats_repository_as_untrusted(name):
 
 
 def test_required_skills_exist():
-    assert set(skills.REVIEW_SKILLS + ("verify-finding", "propose-fix", "verify-fix")) <= set(skills.available())
+    assert set(skills.REVIEW_SKILLS + ("verify-finding", "propose-fix", "verify-fix", "challenge-test", "blind-fix")) <= set(skills.available())
 
 
 def test_quantum_checks_state_when_they_apply():

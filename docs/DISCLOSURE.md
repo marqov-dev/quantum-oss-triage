@@ -1,8 +1,12 @@
 # Disclosure policy
 
-Every finding with security impact is private, whatever its severity and
-whichever skill or scanner raised it. In round one that includes known
-dependency advisories.
+Every newly found issue with security impact is private, whatever its
+severity and whichever skill or scanner raised it.
+
+Known dependency advisories are already public (each has a published
+advisory ID). From 5 November 2026 they are shown in full in the team's own
+private report, so the team can act on them. They are still never published
+by us, and never appear in a public summary beyond a count.
 
 ## How security findings are reported
 
@@ -44,7 +48,7 @@ summary for details given away indirectly.
 
 ## Other findings
 
-Non-security findings go in the repository's private Report, shared with that
-team. Fixes sit on branches named `review/2026-10/<finding-id>` in a public
+Non-security findings, and known dependency advisories, go in the
+repository's private Report, shared with that team. Fixes sit on branches named `review/2026-10/<finding-id>` in a public
 fork under `marqov-dev`, pushed only after a person approves each branch. We
 open no pull requests or issues against the original repository.
