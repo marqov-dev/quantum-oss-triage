@@ -42,7 +42,7 @@ SECTIONS = [
      "a claim several models got wrong can still point at confusing code."),
     ("fixed_upstream", "Already fixed upstream",
      "These failed at the reviewed commit but pass on your current main."),
-    ("advisory", "Known advisories in dependencies", "Reported by osv-scanner against the locked dependencies."),
+    ("advisory", "Known advisories in dependencies", "Reported by osv-scanner against the locked dependencies, then re-checked on your current main."),
 ]
 VERDICT_BOX = "**Your verdict:** ☐ real ☐ not real ☐ intended behaviour  (a one-word reply per ID is plenty)"
 
@@ -132,6 +132,15 @@ def item(f: dict, sec: str, run_dir: Path, gate: dict | None, chal: dict | None,
             "fix": _best_fix(run_dir, fix), "prior_fix": prior_fix}
 
 
+def _on_main(a: dict | None) -> str:
+    """The advisory on upstream's current default branch, from the gates' re-scan."""
+    if not a or a.get("head") == "unknown":
+        return "not checked"
+    if a["head"] == "present":
+        return "still present"
+    return f"resolved (now {a['head_version']})" if a.get("head_version") else "resolved"
+
+
 def model_stats(groups: list[dict], findings: list[dict], sections: dict, chal: dict, fixg: dict) -> list[dict]:
     """How each model did, measured against the other checks (not against the maintainers)."""
     s = defaultdict(Counter)
@@ -163,6 +172,10 @@ def build(manifest: dict, findings: list[dict], groups: list[dict], gates: dict,
     items = [item(f, secs[f["id"]], run_dir, g.get(f["id"]), c.get(f["id"]), x.get(f["id"]),
                   prior_by_finding.get(f["id"]))
              for f in findings if secs[f["id"]] != "security"]
+    on_main = {a["id"]: a for a in (gates or {}).get("advisories", [])}
+    for i in items:
+        if i["section"] == "advisory":
+            i["on_main"] = _on_main(on_main.get(i["id"]))
     items.sort(key=lambda i: (SEVERITY_ORDER.index(i["severity"][0]["value"]) if i["severity"] else 9, i["id"]))
     used = [a for a in manifest["adapters"] if a.get("used")]
     return {
@@ -226,8 +239,8 @@ def to_markdown(r: dict) -> str:
             continue
         out += [f"## {label} ({len(rows)})", "", blurb, ""]
         if key == "advisory":
-            out += ["| ID | Advisory | Severity proposed |", "| --- | --- | --- |"]
-            out += [f"| {i['id']} | {i['title']} | {_sev(i)} |" for i in rows]
+            out += ["| ID | Advisory | Severity proposed | On your main |", "| --- | --- | --- | --- |"]
+            out += [f"| {i['id']} | {i['title']} | {_sev(i)} | {i.get('on_main', 'not checked')} |" for i in rows]
             out.append("")
             continue
         out += ["| ID | Title | Location | Severity proposed | Fix |", "| --- | --- | --- | --- | --- |"]
@@ -296,7 +309,10 @@ def to_evidence_markdown(r: dict) -> str:
             out += [f"Blind fix by {_src(i['fix']['by'])}. {i['fix']['summary']}", "", "```diff", i["fix"]["diff"].rstrip(), "```", ""]
         p = i.get("prior_fix")
         if p and p.get("diff"):
-            out += [f"Hand-made fix, rechecked on current main: {p['status'].replace('_', ' ')}.", "",
+            how = ("its failing test now passes, and no other test newly fails" if p.get("hidden_test", True)
+                   else "it applies cleanly and no test newly fails; there is no failing test for this one")
+            status = how if p["status"] == "passes" else p["status"].replace("_", " ")
+            out += [f"Hand-made fix, rechecked on current main: {status}.", "",
                     "```diff", p["diff"].rstrip(), "```", ""]
     return "\n".join(out)
 
@@ -428,8 +444,9 @@ def to_blocks(r: dict, charts: dict | None = None) -> list[tuple[str, object]]:
             continue
         parts.append(_h2(f"{label} ({len(items)})"))
         if key == "advisory":
-            parts.append(("markdown", "\n".join([blurb, "", "| Advisory | Severity |", "| --- | --- |"]
-                                                + [f"| {i['title']} · {i['id']} | {_top_severity(i)} |" for i in items])))
+            parts.append(("markdown", "\n".join([blurb, "", "| Advisory | Severity | On your main |", "| --- | --- | --- |"]
+                                                + [f"| {i['title']} · {i['id']} | {_top_severity(i)} | "
+                                                   f"{i.get('on_main', 'not checked')} |" for i in items])))
         else:
             parts.append(("markdown", "\n".join([blurb, "", "| Finding | Severity | Fix |", "| --- | --- | --- |"]
                                                 + [f"| {i['title']} · {i['id']} | {_top_severity(i)} | "

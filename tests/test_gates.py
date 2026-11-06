@@ -141,3 +141,36 @@ def test_cached_gate_rechecks_only_the_trees_that_moved(tmp_path):
     moved = gates.gate_one(ctx, f, {"head": (tmp_path / "new", "c2")})
     assert len(scripts) == 3 and "seq" not in scripts[2]
     assert moved["head"] == {"commit": "c2", "outcome": "passes"} and moved["verdict"] == "failed"
+
+
+def test_advisories_rechecked_on_head(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from harness.scanners.base import ScanResult
+    (tmp_path / "uv.lock").write_text('[[package]]\nname = "certifi"\nversion = "2026.10.18"\n'
+                                      '[[package]]\nname = "urllib3"\nversion = "2.0.0"\n')
+
+    def adv(fid, pkg, ver, ids):
+        return {"id": fid, "category": "dependency_advisory", "title": f"Known advisory in dependency {pkg} {ver}",
+                "detection": {"detections": [{"rule_id": ids}]}}
+    head_scan = ScanResult("osv-scanner", "ok", findings=[
+        {"title": "Known advisory in dependency urllib3 2.0.0", "rule_id": "GHSA-u"}])
+    monkeypatch.setattr(gates, "tool_versions", lambda w, s: {"osv-scanner": "2"})
+    monkeypatch.setattr(gates.OsvScanner, "run", lambda self, w, s, v: head_scan)
+    saved = {}
+    unit = SimpleNamespace(done=lambda: False, save=lambda st, p: saved.update(p))
+    ctx = SimpleNamespace(spec=SimpleNamespace(name="r"), worker=None,
+                          ledger=SimpleNamespace(unit=lambda *a: unit))
+    out = gates.recheck_advisories(ctx, [adv("A", "certifi", "2025.8.3", "PYSEC-1,GHSA-c"),
+                                         adv("B", "urllib3", "1.0", "GHSA-u"), {"id": "C", "category": "correctness"}],
+                                   {"head": (tmp_path, "abc123")})
+    assert out == [{"id": "A", "head": "resolved", "head_version": "2026.10.18"},
+                   {"id": "B", "head": "present", "head_version": "2.0.0"}]
+    assert saved["leads"] == [{"title": "Known advisory in dependency urllib3 2.0.0", "ids": ["GHSA-u"]}]
+    assert gates.recheck_advisories(ctx, [], {"head": (tmp_path, "abc")}) == []
+
+
+def test_report_shows_advisory_on_main():
+    from harness.publish import tiered
+    assert tiered._on_main({"head": "resolved", "head_version": "2.1"}) == "resolved (now 2.1)"
+    assert tiered._on_main({"head": "present"}) == "still present"
+    assert tiered._on_main(None) == "not checked"

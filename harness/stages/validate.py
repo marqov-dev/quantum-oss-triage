@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from harness.stages import deps
 from harness.controller import merge, schema
 from harness.controller.context import RepoContext
 
@@ -58,6 +59,8 @@ def validate_group(ctx: RepoContext, g: dict) -> dict:
         unit.save("pending" if pending else "done", result)
         return result
     worker_ok, why = ctx.worker.available() if ctx.worker else (False, "no worker")
+    if worker_ok and (problem := deps.environment_problem(ctx)):
+        worker_ok, why = False, problem
     if not worker_ok:
         result = {"status": "blocked", "method": "reproduction", "evidence_ref": None,
                   "notes": f"worker unavailable: {why}", "reproduction": None}

@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 from harness import secrets
+from harness.stages import deps
 from harness.controller import prompts, skills
 from harness.controller.context import RepoContext
 from harness.stages.validate import _PYTEST
@@ -157,6 +158,8 @@ def fix_one(ctx: RepoContext, f: dict) -> dict:
     fix_dir.mkdir(parents=True, exist_ok=True)
     (fix_dir / "fix.diff").write_text(prop["diff"])
     worker_ok, why = ctx.worker.available() if ctx.worker else (False, "no worker")
+    if worker_ok and (problem := deps.environment_problem(ctx)):
+        worker_ok, why = False, problem
     check = check_in_worker(ctx, f["id"], prop["diff"], repro_code) if worker_ok else {"applied": None, "note": why}
 
     others = [m for m in order if m != proposer]

@@ -15,6 +15,9 @@ repos:
   - name: unitaryfoundation/ucc
     source: https://github.com/unitaryfoundation/ucc.git
     ref: main
+    # bqskitrs publishes x86 wheels only and no source, so this runs as x86 (emulated on arm64).
+    worker:
+      platform: linux/amd64
   - name: qutip/qutip
     source: https://github.com/qutip/qutip.git
     ref: master
@@ -97,6 +100,9 @@ repos:
   - name: BQSKit/bqskit
     source: https://github.com/BQSKit/bqskit.git
     ref: main
+    # bqskitrs publishes x86 wheels only and no source, so this runs as x86 (emulated on arm64).
+    worker:
+      platform: linux/amd64
   # default branch is master
   - name: zxcalc/pyzx
     source: https://github.com/zxcalc/pyzx.git
