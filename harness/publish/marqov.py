@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -171,10 +172,18 @@ class PlannedDoc:
     share: bool = False    # list it among the share links David creates in the web app
     target: str = "repo"   # "repo" (per-repository Project) or "hub" (counts only)
     repo: str | None = None
+    # Several blocks, in order: ("markdown", text) or ("image", Path). Empty means one
+    # markdown block holding `content`. With parts, `content` must be their markdown joined,
+    # so the sensitive-content gate checks exactly what is uploaded.
+    parts: list = field(default_factory=list)
 
     @property
     def sha256(self) -> str:
-        return hashlib.sha256(self.content.encode()).hexdigest()
+        h = hashlib.sha256(self.content.encode())
+        for kind, value in self.parts:
+            if kind == "image":
+                h.update(Path(value).read_bytes())
+        return h.hexdigest()
 
     def gate(self) -> list[str]:
         return redact.check(self.content, self.sensitive)
@@ -359,9 +368,39 @@ class MarqovClient:
     def patch_block(self, project: str, block_id: str, content: str) -> dict:
         return self._req("PATCH", f"/api/projects/{project}/blocks/{block_id}", {"content": content})
 
-    def create_block(self, project: str, doc_id: str, content: str) -> dict:
+    def create_block(self, project: str, doc_id: str, content: str, position: int = 0) -> dict:
         return self._req("POST", f"/api/projects/{project}/blocks",
-                         {"document_id": doc_id, "block_type": "markdown", "content": content, "position": 0})
+                         {"document_id": doc_id, "block_type": "markdown", "content": content, "position": position})
+
+    def delete_block(self, project: str, block_id: str) -> dict:
+        return self._req("DELETE", f"/api/projects/{project}/blocks/{block_id}")
+
+    def upload_image(self, project: str, doc_id: str, path: Path, position: int) -> dict:
+        """POST /api/projects/{id}/blocks/image as multipart form data (PNG, JPEG, GIF or WebP, up to 5 MB)."""
+        boundary = "qot" + hashlib.sha256(Path(path).read_bytes()).hexdigest()[:24]
+        kind = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+                ".webp": "image/webp"}[Path(path).suffix.lower()]
+        parts = []
+        for name, value in (("document_id", doc_id), ("position", str(position))):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{Path(path).name}"\r\n'
+                     f"Content-Type: {kind}\r\n\r\n".encode() + Path(path).read_bytes() + b"\r\n")
+        body = b"".join(parts) + f"--{boundary}--\r\n".encode()
+        h = {"Authorization": f"Bearer {self._key}", "Accept": "application/json",
+             "Content-Type": f"multipart/form-data; boundary={boundary}"}
+        for attempt in range(4):
+            req = urllib.request.Request(f"{self.base}/api/projects/{project}/blocks/image", data=body, method="POST",
+                                         headers=h)
+            try:
+                with self._open(req, timeout=120) as resp:
+                    return json.loads(resp.read().decode() or "{}")
+            except urllib.error.HTTPError as e:
+                text = e.read().decode(errors="replace")[:500]
+                if e.code in (429, 502, 503, 504) and attempt < 3:
+                    self._sleep(min(float(e.headers.get("Retry-After") or 2 ** attempt), 30))
+                    continue
+                raise ApiError(e.code, secrets.redact(text)) from None
+        raise ApiError(0, "retries exhausted")
 
 
 def doc_url(base: str, project: str, doc_type: str, doc_id: str) -> str:
@@ -439,8 +478,12 @@ def publish_live(docs: list[PlannedDoc], targets: Targets, client_for, record_pa
                      "url": doc_url(client.base, project, doc.document_type, res["document_id"]), "share": doc.share}
             if res["status"] in ("created", "updated", "unchanged"):
                 entry["content_sha256"] = doc.sha256
+                if res.get("blocks_fp"):
+                    entry["blocks_fp"] = res["blocks_fp"]
             elif rec and "content_sha256" in rec:
                 entry["content_sha256"] = rec["content_sha256"]
+                if "blocks_fp" in rec:
+                    entry["blocks_fp"] = rec["blocks_fp"]
             record[doc.key] = entry
             _save_record(record_path, record)
             res["url"] = entry["url"]
@@ -472,6 +515,8 @@ def _publish_one(doc: PlannedDoc, client: MarqovClient, project: str, rec: dict 
         return {"status": "skipped", "document_id": doc_id, "reason": "archived in the web app; not republished"}
     if meta.get("document_type") and meta["document_type"] != doc.document_type:
         return {"status": "blocked", "problems": [f"{doc_id} is a {meta['document_type']}, not a {doc.document_type}"]}
+    if doc.parts:
+        return _publish_parts(doc, client, project, doc_id, blocks, rec, adopted)
     if not blocks:
         client.create_block(project, doc_id, doc.content)
         return {"status": "created", "document_id": doc_id}
@@ -488,6 +533,53 @@ def _publish_one(doc: PlannedDoc, client: MarqovClient, project: str, rec: dict 
         return {"status": "skipped", "document_id": doc_id, "reason": f"{why}; not overwritten"}
     client.patch_block(project, blocks[0]["id"], doc.content)
     return {"status": "updated" if current else "created", "document_id": doc_id}
+
+
+def _is_section(block: dict) -> bool:
+    """As the platform decides (lib/projects/sections.ts): a markdown block holding only an H2."""
+    return (block.get("block_type") == "markdown" and not block.get("update_group_id")
+            and bool(re.fullmatch(r"##[\t ]+[^\r\n]+", (block.get("content") or "").strip())))
+
+
+def blocks_fingerprint(blocks: list[dict]) -> str:
+    """What a document's blocks hold, as the server reports it: markdown text, or an image's digest."""
+    rows = [(b.get("block_type"), b.get("content") if b.get("block_type") == "markdown"
+             else (b.get("image_digest") or b.get("image_key"))) for b in sorted(blocks, key=lambda b: b.get("position", 0))]
+    return hashlib.sha256(json.dumps(rows).encode()).hexdigest()
+
+
+def _publish_parts(doc: PlannedDoc, client: MarqovClient, project: str, doc_id: str, blocks: list[dict],
+                   rec: dict | None, adopted: bool) -> dict:
+    """Write a document as several blocks. Existing blocks are replaced only if they are exactly
+    what this publisher uploaded last time (or the single block of an earlier one-block upload)."""
+    rec = rec or {}
+    now = blocks_fingerprint(blocks)
+    if blocks and rec.get("blocks_fp") == now and rec.get("content_sha256") == doc.sha256:
+        return {"status": "unchanged", "document_id": doc_id, "blocks_fp": now}
+    if blocks:
+        one_block_ours = (len(blocks) == 1 and blocks[0].get("block_type") == "markdown" and not adopted
+                          and rec.get("content_sha256") == hashlib.sha256((blocks[0].get("content") or "").encode()).hexdigest())
+        if not (rec.get("blocks_fp") == now or one_block_ours or all(not b.get("content") and b.get("block_type") == "markdown" for b in blocks)):
+            why = "adopted by title, and its content is not ours" if adopted else "edited in the web app since the last upload"
+            return {"status": "skipped", "document_id": doc_id, "reason": f"{why}; not overwritten"}
+        for b in blocks:
+            client.delete_block(project, b["id"])
+    for pos, (kind, value) in enumerate(doc.parts):
+        if kind == "image":
+            client.upload_image(project, doc_id, Path(value), pos)
+        else:
+            client.create_block(project, doc_id, value, pos)
+    after = client.get_document(project, doc_id).get("blocks") or []
+    # Links to "#{{top}}" point at the first section, whose anchor exists only now.
+    first = next((b for b in sorted(after, key=lambda b: b.get("position", 0)) if _is_section(b)), None)
+    if first:
+        for b in after:
+            if b.get("block_type") == "markdown" and "#{{top}}" in (b.get("content") or ""):
+                client.patch_block(project, b["id"], b["content"].replace("#{{top}}", f"#section-{first['id']}"))
+        after = client.get_document(project, doc_id).get("blocks") or []
+    fresh = all(b.get("block_type") == "markdown" and not b.get("content") for b in blocks)
+    return {"status": "created" if fresh else "updated", "document_id": doc_id, "blocks": len(after),
+            "blocks_fp": blocks_fingerprint(after)}
 
 
 def share_link_todo(record: dict) -> list[str]:

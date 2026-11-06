@@ -317,3 +317,162 @@ def load(run_dir: Path, repo_dir: Path) -> dict:
         v["diff"] = d.read_text() if d.exists() else None
     return build(j("manifest.json", {}), j("findings.json", []), j("groups.json", []), j("gates.json", {}),
                  j("challenge.json", {}), j("fixgate.json", {}), run_dir, prior)
+
+
+# --- blocks for a Marqov document ------------------------------------------------
+#
+# Marqov lists a document's sections in a contents sidebar on its share page. A section
+# is a block holding only a "## Heading" line, so every H2 here is its own block.
+# Charts are text bars, which follow the reader's light or dark theme and stay at text
+# width. "{{top}}" is replaced after upload with the anchor of the first section.
+
+CTA_URL = "https://marqov.ai/request-access"
+TOP = "{{top}}"
+BAR_WIDTH = 16
+
+
+def bar(n: int, top: int) -> str:
+    if not top or not n:
+        return ""
+    return "▇" * max(1, round(BAR_WIDTH * n / top))
+
+
+def _h2(title: str) -> tuple[str, str]:
+    return ("markdown", f"## {title}")
+
+
+def _back_to_top() -> tuple[str, str]:
+    return ("markdown", f"[↑ Back to top](#{TOP})")
+
+
+def _checks(i: dict) -> list[str]:
+    g, c, x = i["section"], i["challenge"], i["fix_gate"]
+    if g == "fixed_upstream":
+        rows = ["✅ Fails at the reviewed commit", "✅ Passes on your current main"]
+    elif g == "untested":
+        rows = ["➖ No test passed our gates"]
+    else:
+        rows = ["✅ Fails reliably, also on your current main"]
+    rows += {"upheld": ["✅ Challengers could not break the test"],
+             "refuted": ["❌ Challengers showed the test is wrong"],
+             "unsettled": ["⚠️ Challenge unsettled"]}.get(c, [])
+    n = sum(1 for v in i["views"] if v["stage"] == "blind fix" and "fix passes" in v["verdict"])
+    m = sum(1 for v in i["views"] if v["stage"] == "blind fix")
+    rows += {"confirmed": [f"✅ Blind fix passed ({n} of {m})"],
+             "not_confirmed": ["❌ No blind fix passed"],
+             "disputed": ["❌ Fixers say it is not a defect"],
+             "unsettled": ["⚠️ Blind fix unsettled"]}.get(x, [])
+    return [f"- {r}" for r in rows]
+
+
+def _card(i: dict) -> str:
+    out = [f"### {i['id']} · {i['title']}", "",
+           f"`{i['location']}` · {i['area']} · found by {', '.join(_src(s) for s in i['found_by'])}", "",
+           f"**Severity proposed:** {_sev(i).replace(', ', ' · ')}", "",
+           "> " + _clip(i["claim"], 500), "", "**Checks**", "", *_checks(i), ""]
+    if i["raised_before"]:
+        out += [f"Raised before: {', '.join(i['raised_before'])}", ""]
+    if i["section"] in ("disagree", "untested", "weak"):
+        out += ["**What each model said**", ""]
+        out += [f"- *{v['stage']}, {_src(v['model'])}:* **{v['verdict']}**. {_clip(v['reason'], 260)}" for v in i["views"]]
+        out.append("")
+    fixes = [s for s in (i["fix"] and f"a blind fix by {_src(i['fix']['by'])}", i.get("prior_fix") and "a hand-made fix") if s]
+    if fixes:
+        out += [f"🔧 **Ready to apply:** {' and '.join(fixes)}, in the evidence document under {i['id']}.", ""]
+    elif i["test"]:
+        out += [f"🧪 The test is in the evidence document under {i['id']}.", ""]
+    out.append("**Your verdict?** real · not real · intended behaviour (reply with the ID)")
+    return "\n".join(out)
+
+
+def _top_severity(i: dict) -> str:
+    return i["severity"][0]["value"] if i["severity"] else "–"
+
+
+def to_blocks(r: dict, charts: dict | None = None) -> list[tuple[str, object]]:
+    """The report as Marqov blocks: ("markdown", text)."""
+    h, n = r["header"], r["counts"]
+    ready = sum(1 for i in r["items"] if i["fix"] or i.get("prior_fix"))
+    rows = [("Likely defects", n["likely"]), ("Models disagree", n["disagree"]), ("Could not test", n["untested"]),
+            ("Probably not defects", n["weak"]), ("Fixed on your main", n["fixed_upstream"]),
+            ("Dependency advisories", n["advisory"]), ("Security, sent separately", r["security_count"])]
+    top = max(c for _, c in rows) or 1
+    parts: list[tuple[str, object]] = [("markdown", "\n".join([
+        f"# {r['title']}", "",
+        f"Reviewed commit `{h['commit'][:12]}`" + (f", rechecked on your current main `{h['current_main'][:12]}`"
+                                                   if h.get("current_main") else "") + f" · {h['review_date']}"]))]
+    parts += [_h2("At a glance"), ("markdown", "\n".join([
+        f"- **{n['likely']} likely defects**, each with a failing test and a fix written without seeing that test.",
+        f"- **{n['disagree']} where the models disagree**: often a sign the intended behaviour is unclear.",
+        f"- 🔧 **{ready} fixes ready to apply**, in the evidence document.", "",
+        "| Where the findings landed | Count |", "| --- | --- |",
+        *[f"| {label} | {bar(c, top)} {c} |" for label, c in rows], "",
+        "The first four rows run from the strongest evidence to the weakest.", "",
+        "Made by three AI models and fixed-rule tools, then checked by the models against each other and by running "
+        "tests. A person read a sample before sending. Nothing here has been filed upstream."]))]
+    parts += [_h2("How to read this report"), ("markdown", "\n".join([
+        "Each finding sits in a section by the strength of its evidence, strongest first. Each card shows the claim, "
+        "its checks (✅ passed, ⚠️ unsettled, ❌ failed), and where to find its test and fix.", "",
+        f"- **{SECTIONS[0][1]}:** every automatic check agrees.",
+        f"- **{SECTIONS[1][1]}:** each model's view is on the card.",
+        f"- **{SECTIONS[2][1]}:** the models' reading of the code only.",
+        f"- **{SECTIONS[3][1]}:** listed so nothing is hidden.", "",
+        f"{r.get('hand_review_only', 0)} of the items came from an earlier review of this repository by hand at "
+        "Marqov; the models then checked, tested and fixed them like everything else. Severities are proposals, "
+        "labelled with who proposed them.", "",
+        "**What we ask:** for any item you look at, a one-word verdict (real, not real or intended behaviour) "
+        "with its ID. It tells us which checks were right, and improves the next review."]))]
+    for key, label, blurb in SECTIONS:
+        items = [i for i in r["items"] if i["section"] == key]
+        if not items:
+            continue
+        parts.append(_h2(f"{label} ({len(items)})"))
+        if key == "advisory":
+            parts.append(("markdown", "\n".join([blurb, "", "| Advisory | Severity |", "| --- | --- |"]
+                                                + [f"| {i['title']} · {i['id']} | {_top_severity(i)} |" for i in items])))
+        else:
+            parts.append(("markdown", "\n".join([blurb, "", "| Finding | Severity | Fix |", "| --- | --- | --- |"]
+                                                + [f"| {i['title']} · {i['id']} | {_top_severity(i)} | "
+                                                   f"{'🔧' if i['fix'] or i.get('prior_fix') else ''} |" for i in items])))
+            parts += [("markdown", _card(i)) for i in items]
+        parts.append(_back_to_top())
+    order = ("claude", "codex", "antigravity", "gemini")
+    models = sorted((m for m in r["models"] if m["model"] in order), key=lambda m: order.index(m["model"]))
+    frac = lambda a, b: f"{bar(a, b) or '–'} {a} of {b}" if b else "none"
+    parts += [_h2("How the models did"), ("markdown", "\n".join(
+        ["Measured against the other checks, not yet against your verdicts.", "",
+         "| Model | Tests that survived the challenge | Blind fixes that passed |", "| --- | --- | --- |"]
+        + [f"| {_src(m['model'])} | {frac(m['tests_upheld'], m['tests_challenged']) if m['tests_challenged'] else 'wrote no tests'} | "
+           f"{frac(m['fixes_passed'], m['fixes_attempted'])} |" for m in models] + [""]
+        + [f"- **{_src(m['model'])}** raised {m['claims']} claims of its own; {m['claims_likely']} are now likely "
+           "defects." for m in models]
+        + [f"- **Fixed-rule tools:** " + ", ".join(f"{m['model']} {m['claims']}" for m in r["models"] if m not in models)
+           + " leads, checked by the models."])), _back_to_top()]
+    parts += [_h2("How this was produced"), ("markdown", "\n".join(
+        ["**Models**", ""]
+        + [f"- {m['cli']}: {', '.join(m['model_ids']) or 'model id not reported'} ({(m['version'] or '').split(' (sandbox')[0]})"
+           for m in h["models"]]
+        + ["", "**Tools**", ""] + [f"- {t['name']}: {t['status']}" for t in h["tools"]]
+        + ["", f"Method: [quantum-oss-triage]({r['how_produced']['method']}), run `{r['how_produced']['run_id']}`, "
+               f"harness `{r['how_produced']['harness_revision']}`. A rerun is not guaranteed to give identical "
+               "model answers."]))]
+    parts += [_h2("Run this on your own code"), ("markdown", "\n".join([
+        "This review ran on Marqov: the run record, every test and fix, and this report sit together in one "
+        "Project, so the work can be checked and rerun.", "",
+        f"### [Run this on your code with Marqov →]({CTA_URL})", "", f"[↑ Back to top](#{TOP})"]))]
+    return parts
+
+
+def to_evidence_blocks(r: dict) -> list[tuple[str, object]]:
+    """One section per finding, so the contents sidebar lists them by ID."""
+    head, *rest = to_evidence_markdown(r).split("\n## ")
+    parts: list[tuple[str, object]] = [("markdown", head)]
+    for b in rest:
+        title, _, body = b.partition("\n")
+        parts += [_h2(title), ("markdown", body.strip() + f"\n\n[↑ Back to top](#{TOP})")]
+    return parts
+
+
+def blocks_markdown(parts: list) -> str:
+    """The blocks joined as one markdown text, for the local outbox."""
+    return "\n\n".join(v.replace(f"#{TOP}", "#") for k, v in parts if k == "markdown")
