@@ -100,7 +100,9 @@ def test_units_refused_for_capacity_run_again_on_resume(tmp_path, repo, config, 
     assert any("at capacity" in f["error"] for f in manifest["failures"])
     again = two_models()
     pipeline.run(config, tmp_path / "run", [repo], adapters=again, worker=worker, log=lambda *_: None)
-    assert again["codex"].calls and again["claude"].calls == []  # only the refused units are repeated
+    # Only the refused units are repeated. Codex's test now exists, so the finding is gated
+    # and Claude (which did not write it) challenges it and fixes it blind; nothing it already did is redone.
+    assert again["codex"].calls and [skill for skill, _ in again["claude"].calls] == ["test-challenge", "blind-fix-output"]
     manifest = json.loads((tmp_path / "run" / "test__m" / "manifest.json").read_text())
     assert not any("at capacity" in f["error"] for f in manifest["failures"])
 

@@ -16,12 +16,14 @@ a plan, not the verdict. agy's own --sandbox cannot start in the container, so
 every command fails, with or without bubblewrap installed; it is kept only for
 a run outside the container. A command that no rule allows ends the turn with
 status SUCCESS, an empty reply and a `denied_actions` entry, so the sandbox home
-carries an allow-list (AGY_ALLOWED_COMMANDS) and the model is told what is on it.
+carries an allow-list (AGY_ALLOWED_COMMANDS) and the model is told what is on it. A refusal
+is asked again (twice at most), quoting the refused command from agy's transcript.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from harness.adapters.base import Adapter, Invocation, Parsed, extract_json, model_schema
@@ -31,9 +33,44 @@ from harness.controller import cleanenv
 HARD_TIMEOUT_S = 25 * 60
 
 # Without this, a command outside the allow-list ends the turn with no reply.
-SHELL_NOTE = ("Shell commands are limited to ls, cat, head, tail, wc, grep, nl, pwd and find, joined with pipes or "
-              "&& if needed. Anything else, including python, pytest, sed, git and `find -exec`, ends your turn with "
-              "no reply, so do not try them. The folder has no git history.")
+SHELL_NOTE = ("Shell commands are limited to ls, cat, head, tail, wc, grep, nl, pwd, find, cut and tr, joined with "
+              "pipes or && if needed. Anything else, including python, pytest, sed, awk, xargs, which, git, `||` and "
+              "`find -exec`, ends your turn with no reply, so do not try them. To read lines 40 to 56 of a file, use "
+              "your read_file tool with a start and end line, or `nl -ba FILE | head -n 56 | tail -n 17`. To search "
+              "files, use `grep -rn PATTERN DIR`. Stay inside the current folder. It has no git history.")
+
+
+def refused_action(home: Path, conversation_id: str | None) -> str | None:
+    """The command or file read agy refused, from the conversation transcript in its home.
+
+    The text comes from the model's own tool call and is only quoted back to it.
+    """
+    if not conversation_id:
+        return None
+    t = Path(home) / ".gemini/antigravity-cli/brain" / conversation_id / ".system_generated/logs/transcript.jsonl"
+    try:
+        steps = [json.loads(line) for line in t.read_text().splitlines() if line.strip()]
+    except (OSError, json.JSONDecodeError):
+        return None
+    for step in reversed(steps):
+        if step.get("status") == "ERROR" and (m := _REFUSED.search(step.get("error") or "")):
+            return m.group(1)[:200]
+    for step in reversed(steps):
+        for call in step.get("tool_calls") or []:
+            args = call.get("args") or {}
+            what = args.get("CommandLine") or args.get("Path")
+            if isinstance(what, str):
+                return what.strip().strip('"')[:200]
+    return None
+
+
+_REFUSED = re.compile(r'permission check failed for (?:unsandboxed|read_file) "(.*?)": user denied', re.DOTALL)
+
+
+def retry_note(refused: str | None) -> str:
+    what = f"`{refused}`" if refused else "a command that is not allowed"
+    return (f"Your previous attempt ended without a reply because the harness does not allow {what}. "
+            f"Start again and use only the commands allowed above. {SHELL_NOTE}")
 
 
 class AntigravityAdapter(Adapter):
@@ -99,7 +136,9 @@ class AntigravityAdapter(Adapter):
         text = next((doc[k] for k in ("response", "result", "output", "text") if isinstance(doc.get(k), str)), None)
         data = extract_json(text) if text is not None else (doc if "findings" in doc or "verdict" in doc else None)
         if not data and doc.get("denied_actions"):
-            # The same call would be refused again, so it is not worth a retry.
-            return Parsed(None, model_id or "agy-default", tokens, "agy refused a command outside the allow-list",
-                          failed_call=True)
+            # agy ends the turn on a refusal. Ask again, naming what was refused.
+            home = self.sandbox.home if self.sandbox is not None else Path.home()
+            refused = refused_action(home, doc.get("conversation_id"))
+            return Parsed(None, model_id or "agy-default", tokens, "agy refused a command outside the allow-list"
+                          + (f": {refused}" if refused else ""), retry_note=retry_note(refused))
         return Parsed(data, model_id or "agy-default", tokens, None if data else "no JSON in response")

@@ -109,9 +109,15 @@ tool_suggest = false
 # `find -exec`, `find -delete`, `;` and `$(...)`. No interpreter, and nothing that
 # writes. `git grep` fails on the review copy, which has no .git, but it fails
 # with an error the model can recover from; a refusal ends the turn.
-AGY_ALLOWED_COMMANDS = ("ls", "cat", "head", "tail", "wc", "grep", "nl", "pwd", "find", "git grep")
+# sed, awk and xargs stay off the list: each can run other commands (sed's `e`,
+# awk's system(), xargs itself), which would get round it.
+AGY_ALLOWED_COMMANDS = ("ls", "cat", "head", "tail", "wc", "grep", "nl", "pwd", "find", "git grep", "cut", "tr")
+# The --json-schema file sits in the output folder, outside the workspace; agy shows
+# the model its path, and a refused read of it ends the turn.
+AGY_ALLOWED_READS = ("/out/schema.json",)
 AGY_SETTINGS = json.dumps({"trustedWorkspaces": [],
-                           "permissions": {"allow": [f"command({c})" for c in AGY_ALLOWED_COMMANDS]}}) + "\n"
+                           "permissions": {"allow": [f"command({c})" for c in AGY_ALLOWED_COMMANDS]
+                                           + [f"read_file({p})" for p in AGY_ALLOWED_READS]}}) + "\n"
 
 SPECS = {
     "codex": CliSpec(

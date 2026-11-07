@@ -166,11 +166,12 @@ def test_antigravity_command_uses_schema_file(tmp_path):
 
 
 def test_agy_allow_list_holds_no_interpreter_or_writer():
-    from harness.adapters.sandbox import AGY_ALLOWED_COMMANDS, AGY_SETTINGS
+    from harness.adapters.sandbox import AGY_ALLOWED_COMMANDS, AGY_ALLOWED_READS, AGY_SETTINGS
 
     allowed = json.loads(AGY_SETTINGS)["permissions"]["allow"]
-    assert allowed == [f"command({c})" for c in AGY_ALLOWED_COMMANDS]
-    assert not {"python", "python3", "sh", "bash", "sed", "awk", "curl", "git", "*"} & set(AGY_ALLOWED_COMMANDS)
+    assert allowed == [f"command({c})" for c in AGY_ALLOWED_COMMANDS] + [f"read_file({p})" for p in AGY_ALLOWED_READS]
+    assert not {"python", "python3", "sh", "bash", "sed", "awk", "xargs", "curl", "git", "*"} & set(AGY_ALLOWED_COMMANDS)
+    assert AGY_ALLOWED_READS == ("/out/schema.json",)  # one file, never a folder
 
 
 def test_antigravity_parse_current_json_format():

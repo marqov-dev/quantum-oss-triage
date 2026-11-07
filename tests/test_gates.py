@@ -143,6 +143,27 @@ def test_cached_gate_rechecks_only_the_trees_that_moved(tmp_path):
     assert moved["head"] == {"commit": "c2", "outcome": "passes"} and moved["verdict"] == "failed"
 
 
+def test_cached_gate_is_redone_when_a_test_appears(tmp_path):
+    """A finding gated before it had a test (cross-check incomplete) is gated again once validate writes one."""
+    from types import SimpleNamespace
+    from harness.controller.ledger import Ledger
+    from harness.workers.base import WorkerResult
+    run_dir = tmp_path / "run"
+    reruns = "".join(f"QOT_RUN {i} 0 1 E       assert -1 == 5\n" for i in range(1, gates.RERUNS + 1))
+    run = lambda script, src, inputs=None, timeout_s=0: WorkerResult(0, reruns if "seq" in script else ASSERT, "")
+    ctx = SimpleNamespace(run_dir=run_dir, repo_dir=run_dir / "o__r", spec=SimpleNamespace(name="o/r"),
+                          ledger=Ledger(tmp_path), worker=SimpleNamespace(run=run), source_dir=tmp_path)
+    (run_dir / "o__r").mkdir(parents=True)
+    trees = {"head": (tmp_path / "old", "c1")}
+    before = gates.gate_one(ctx, {"id": "QOT-1", "validation": {"status": "unvalidated"}}, trees)
+    assert before["verdict"] == "no_evidence"
+    attempt = run_dir / "o__r" / "evidence" / "repro" / "QOT-1" / "0"
+    attempt.mkdir(parents=True)
+    (attempt / "output.txt").write_text(ASSERT)
+    after = gates.gate_one(ctx, {"id": "QOT-1", "validation": {"status": "reproduced"}}, trees)
+    assert after["verdict"] == "passed" and after["evidence_ref"] == "o__r/evidence/repro/QOT-1/0"
+
+
 def test_advisories_rechecked_on_head(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from harness.scanners.base import ScanResult
