@@ -26,6 +26,8 @@ USAGE_LIMIT_PATTERNS = re.compile(
 )
 # Server-side refusals that say nothing about our own usage, such as Codex's
 # "Selected model is at capacity". Checked only after the usage-limit patterns.
+# A refused action (agy ends its turn on one) is asked again this many times, naming it.
+REFUSAL_RETRIES = 2
 CAPACITY_PATTERNS = re.compile(r"at capacity|no capacity|high traffic|overloaded|server (?:is )?busy|temporarily unavailable", re.IGNORECASE)
 CAPACITY_BACKOFF_S = (30, 120, 300)
 NOT_SIGNED_IN_PATTERNS = re.compile(r"not logged in|authentication failed|not logged into|please run /login|not authenticated|login required|sign in", re.IGNORECASE)
@@ -68,6 +70,8 @@ class Parsed:
     tokens: dict
     error: str | None
     failed_call: bool = False  # the CLI itself reported an error (not just bad JSON)
+    # The CLI refused an action and ended the turn; the call is asked again with this note.
+    retry_note: str | None = None
 
 
 def extract_json(text: str) -> dict | None:
@@ -211,8 +215,8 @@ class Adapter:
         duration = 0.0
         cmd: list[str] = []
         model_id = None
-        attempt, capacity_retries = 1, 0
-        while attempt <= 2:
+        attempt, capacity_retries, refusal_retries = 1, 0, 0
+        while attempt <= 2 + refusal_retries:
             with tempfile.TemporaryDirectory(prefix=f"qot-{self.name}-") as tmp:
                 out_file = Path(tmp) / "out.json"
                 cmd = self.build_command(attempt_prompt, system, schema_name, cwd, out_file)
@@ -240,6 +244,14 @@ class Adapter:
                                      usage_limited=limited, not_signed_in=signed_out, capacity_refused=capacity,
                                      capacity_retries=capacity_retries, duration_s=duration,
                                      command=_redact_cmd(cmd))
+            if parsed.data is None and parsed.retry_note:
+                last_error = parsed.error or "the CLI refused an action"
+                if refusal_retries < REFUSAL_RETRIES:
+                    refusal_retries += 1
+                    attempt += 1
+                    attempt_prompt = f"{prompt}\n\n{parsed.retry_note}"
+                    continue
+                break
             if parsed.data is None:
                 last_error = parsed.error or "no JSON object in output"
             else:
@@ -254,7 +266,7 @@ class Adapter:
                 "Reply again with only a JSON object that matches the schema exactly."
             )
             attempt += 1
-        return AdapterResult(False, None, "\n".join(raw_all), model_id, total_tokens, last_error, 2,
+        return AdapterResult(False, None, "\n".join(raw_all), model_id, total_tokens, last_error, attempt if refusal_retries else 2,
                              duration_s=duration, command=_redact_cmd(cmd))
 
 

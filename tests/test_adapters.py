@@ -136,12 +136,14 @@ def test_antigravity_command_and_hard_timeout(tmp_path):
     assert a.max_timeout_s == 25 * 60
 
 
-def test_antigravity_refused_command_is_not_retried(tmp_path):
+def test_antigravity_refused_command_is_asked_again(tmp_path):
     from harness.adapters.base import Invocation
 
     doc = {"status": "SUCCESS", "response": "", "denied_actions": [{"action": "command", "display_name": "RunCommand"}]}
-    p = AntigravityAdapter().parse(Invocation(0, json.dumps(doc), "", False, 1.0))
-    assert p.data is None and p.failed_call and "allow-list" in p.error
+    a = AntigravityAdapter()
+    a.sandbox.home = tmp_path  # no transcript: the note still says a command was refused
+    p = a.parse(Invocation(0, json.dumps(doc), "", False, 1.0))
+    assert p.data is None and not p.failed_call and "allow-list" in p.error and "not allowed" in p.retry_note
     empty = AntigravityAdapter().parse(Invocation(0, json.dumps({"status": "SUCCESS", "response": ""}), "", False, 1.0))
     assert empty.data is None and not empty.failed_call  # an empty reply on its own still gets one retry
 

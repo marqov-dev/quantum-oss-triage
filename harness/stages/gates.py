@@ -146,8 +146,15 @@ def _check_trees(ctx: RepoContext, result: dict, inputs: Path, trees: dict, only
 
 def gate_one(ctx: RepoContext, f: dict, trees: dict) -> dict:
     unit = ctx.ledger.unit(ctx.spec.name, "gates", f["id"], None)
-    if unit.done():
-        result = unit.payload()
+    inputs, out, ev = _best_attempt(ctx.repo_dir / "evidence" / "repro" / f["id"])
+    ref = str(inputs.relative_to(ctx.run_dir)) if inputs else None
+    # A cached verdict stands only for the same evidence: a finding gated before validate
+    # wrote its test (or with a different best test) is gated again.
+    cached = unit.payload() if unit.done() else None
+    if cached and (cached.get("validation") != f["validation"]["status"] or cached.get("evidence_ref") != ref):
+        cached = None
+    if cached:
+        result = cached
         # Upstream may have moved since this was checked: repeat only the checks
         # whose tree changed. The reruns are against the pinned commit and stand.
         moved = {w for w, (_, c) in trees.items() if (result.get(w) or {}).get("commit") != c}
@@ -155,8 +162,6 @@ def gate_one(ctx: RepoContext, f: dict, trees: dict) -> dict:
             return result
         _check_trees(ctx, result, ctx.run_dir / result["evidence_ref"], trees, moved)
     else:
-        inputs, out, ev = _best_attempt(ctx.repo_dir / "evidence" / "repro" / f["id"])
-        ref = str(inputs.relative_to(ctx.run_dir)) if inputs else None
         result = {"id": f["id"], "validation": f["validation"]["status"], "evidence": ev, "evidence_ref": ref}
         if ev != "none":
             sig = signature(out)

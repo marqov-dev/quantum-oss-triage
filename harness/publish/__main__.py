@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from harness.paths import REPO_ROOT
-from harness.publish import github, marqov, redact, render, tiered
+from harness.publish import github, marqov, overview, redact, render, tiered
 
 
 def publish_tiered(run_dir: Path, repo_dir: Path, outbox: Path, manifest: dict, findings: list[dict],
@@ -84,6 +84,25 @@ def publish_repo(run_dir: Path, repo_dir: Path, outbox: Path) -> tuple[bool, dic
     return True, {"repo": name, "written": str(d), "report": report, "docs": docs, "sensitive": sensitive}
 
 
+def _models(path: Path | None = None) -> dict[str, str | None]:
+    """The configured models and their model ids, in config order (for the round overview)."""
+    data = yaml.safe_load((path or REPO_ROOT / "config" / "harness.yaml").read_text()) or {}
+    return {name: (m or {}).get("model") for name, m in (data.get("models") or {}).items()}
+
+
+def overview_doc(run_dir: Path, outbox: Path, sensitive: list, config: Path | None = None) -> "marqov.PlannedDoc":
+    """The round's main page: progress only, from every repository's run record, shared widely."""
+    record = outbox / "marqov-published.json"
+    published = json.loads(record.read_text()) if record.is_file() else {}
+    models = _models(config)
+    parts = overview.to_blocks(overview.build(run_dir, list(models), published), models)
+    md = "\n\n".join(v for k, v in parts if k == "markdown")
+    outbox.mkdir(parents=True, exist_ok=True)
+    (outbox / "overview.md").write_text(tiered.blocks_markdown(parts))
+    return marqov.PlannedDoc("round:overview", "report", overview.TITLE, md, sensitive, share=True,
+                             target="hub", parts=parts)
+
+
 def _marqov_targets(path: Path | None = None, local: Path | None = None) -> marqov.Targets:
     data = yaml.safe_load((path or REPO_ROOT / "config" / "harness.yaml").read_text()) or {}
     local = Path(local or marqov.LOCAL_TARGETS_PATH)
@@ -100,9 +119,16 @@ def main(argv=None) -> int:
     ap.add_argument("--config", type=Path, help="harness.yaml with the publish.marqov targets")
     ap.add_argument("--live", action="store_true",
                     help="upload to the configured Marqov Projects (default: dry run, the key is not read)")
+    ap.add_argument("--overview-only", action="store_true",
+                    help="publish only the round overview (progress for every repository), no repository documents")
     args = ap.parse_args(argv)
     outbox = args.outbox or args.run_dir / "outbox"
     repo_dirs = sorted(p.parent for p in args.run_dir.glob("*/manifest.json"))
+    every_sensitive = [f for d in repo_dirs if (d / "findings.json").is_file()
+                       for f in json.loads((d / "findings.json").read_text())
+                       if f.get("sensitivity", {}).get("sensitive") and f.get("category") != "dependency_advisory"]
+    if args.overview_only:
+        repo_dirs = []
     if args.repo:
         wanted = {r.replace("/", "__") for r in args.repo}
         repo_dirs = [d for d in repo_dirs if d.name in wanted]
@@ -118,10 +144,13 @@ def main(argv=None) -> int:
             not_published.append(res["repo"])
         results.append(res)
     targets = _marqov_targets(args.config)
-    if reports or not_published:
-        docs.append(marqov.PlannedDoc("round:overview", "report", marqov.OVERVIEW_TITLE,
-                                      marqov.overview_markdown(reports, not_published, targets.show_security_counts),
-                                      sensitive, target="hub"))
+    # The overview covers every repository, so it is checked against every sensitive finding.
+    over = overview_doc(args.run_dir, outbox, every_sensitive, args.config)
+    if problems := redact.check(over.content, every_sensitive):
+        results.append({"overview": "blocked", "problems": problems})
+        ok_all = False
+    else:
+        docs.append(over)
     if args.public_summary and reports:
         summary = render.public_summary(reports)
         problems = redact.check(json.dumps(summary), [])
