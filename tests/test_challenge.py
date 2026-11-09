@@ -47,7 +47,7 @@ def _ctx(tmp_path, calls, fail=(), available=("claude", "codex", "antigravity"))
         {"id": "QOT-2", "verdict": "failed", "evidence_ref": None}]}))
     written = {}
 
-    def call_model(stage, fid, model, skill, prompt, timeout):
+    def call_model(stage, fid, model, skill, prompt, timeout, inputs=None):
         calls.append((stage, fid, model, prompt))
         if model in fail:
             return ModelCall(False, None, None, "u", "boom")
@@ -96,3 +96,12 @@ def test_an_unavailable_challenger_keeps_its_earlier_verdict(tmp_path):
     ctx.ledger.unit("o/r", "challenge", "QOT-1", "claude").save("done", v("valid"))
     challenge.run(ctx)
     assert written["challenge.json"]["findings"][0]["outcome"] == "upheld"
+
+
+def test_an_earlier_verdict_on_a_different_test_does_not_count(tmp_path):
+    # The finding's best test changed after claude judged the old one; claude is unavailable now.
+    calls = []
+    ctx, written = _ctx(tmp_path, calls, available=("codex", "antigravity"))
+    ctx.ledger.unit("o/r", "challenge", "QOT-1", "claude").save("done", v("valid"), extra={"inputs": "old-test"})
+    challenge.run(ctx)
+    assert written["challenge.json"]["findings"][0]["outcome"] == "unsettled"

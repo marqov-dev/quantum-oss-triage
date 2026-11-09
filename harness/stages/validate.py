@@ -7,6 +7,8 @@ case passes. Install or import failures prove nothing.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 
 from harness.stages import deps
@@ -45,10 +47,30 @@ def judge(stdout: str, timed_out: bool) -> tuple[str, str]:
     return "reproduced", "the reproduction fails at the reviewed commit and the control passes"
 
 
+def inputs_key(g: dict) -> str:
+    """What a validation depends on: the tests proposed for the group, in order."""
+    tests = [[rp["by"], rp["test_code"], rp["control_code"]] for rp in g["reproductions"]]
+    return hashlib.sha256(json.dumps(tests).encode()).hexdigest()[:16]
+
+
+def _still_valid(rec: dict, g: dict, key: str) -> bool:
+    if "inputs" in rec:
+        return rec["inputs"] == key
+    # Saved before validations recorded their inputs. A reproduced result stands; one that
+    # saw fewer tests than the group now has (a model that joined later) is redone.
+    result = rec.get("payload") or {}
+    if result.get("status") == "reproduced":
+        return True
+    seen = len(((result.get("reproduction") or {}).get("attempts")) or [])
+    return seen >= len(g["reproductions"])
+
+
 def validate_group(ctx: RepoContext, g: dict) -> dict:
     unit = ctx.ledger.unit(ctx.spec.name, "validate", g["id"], None)
-    if unit.done():
-        return unit.payload()
+    key = inputs_key(g)
+    rec = unit.load()
+    if rec and rec.get("status") == "done" and _still_valid(rec, g, key):
+        return rec["payload"]
     sensitive = any(c["area"] == "security" or c.get("security_impact") for c in g["candidates"])
     if not g["reproductions"]:
         pending = any(v["verdict"] in ("pending", "failed") for v in g["verifications"])
@@ -56,7 +78,7 @@ def validate_group(ctx: RepoContext, g: dict) -> dict:
                 else "no reproduction was proposed")
         result = {"status": "pending" if pending else "unvalidated", "method": None, "evidence_ref": None,
                   "notes": note, "reproduction": None}
-        unit.save("pending" if pending else "done", result)
+        unit.save("pending" if pending else "done", result, extra={"inputs": key})
         return result
     worker_ok, why = ctx.worker.available() if ctx.worker else (False, "no worker")
     if worker_ok and (problem := deps.environment_problem(ctx)):
@@ -84,7 +106,7 @@ def validate_group(ctx: RepoContext, g: dict) -> dict:
                                    "claimed_failure": rp["claimed_failure"], "attempts": attempts}}
         if status == "reproduced":
             break
-    unit.save("done", result)
+    unit.save("done", result, extra={"inputs": key})
     return result
 
 

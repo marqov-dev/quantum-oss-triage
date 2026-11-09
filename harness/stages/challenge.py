@@ -17,6 +17,8 @@ Results go to challenge.json; finding records and decisions are untouched.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -56,6 +58,16 @@ def _test(attempt: Path, rp: dict) -> dict:
             "observed": out.split("--- stderr ---", 1)[0][-_OBSERVED_CHARS:]}
 
 
+def test_key(test: dict) -> str:
+    """The test a verdict judged: a verdict on another test is asked again."""
+    return hashlib.sha256(json.dumps([test["test_code"], test["control_code"]]).encode()).hexdigest()[:16]
+
+
+def answered(unit, key: str) -> bool:
+    rec = unit.load()
+    return bool(rec) and rec.get("status") == "done" and rec.get("inputs") in (None, key)
+
+
 def run(ctx: RepoContext) -> list[dict]:
     gates = ctx.read_json("gates.json", {}).get("findings", [])
     groups = {g["id"]: g for g in ctx.read_json("groups.json", [])}
@@ -73,16 +85,17 @@ def run(ctx: RepoContext) -> list[dict]:
         test = _test(attempt, rp)
         prompt = prompts.challenge_test(skill, ctx.spec.name, ctx.commit, merge.representative(g["candidates"]),
                                         test, test["observed"])
-        todo.append((gf["id"], rp["by"], gf["evidence_ref"], [m for m in models if m != rp["by"]], prompt))
+        todo.append((gf["id"], rp["by"], gf["evidence_ref"], [m for m in models if m != rp["by"]], prompt,
+                     test_key(test)))
 
     def one(job):
-        fid, model, prompt = job
-        if model not in available and not ctx.ledger.unit(ctx.spec.name, "challenge", fid, model).done():
+        fid, model, prompt, key = job
+        if model not in available and not answered(ctx.ledger.unit(ctx.spec.name, "challenge", fid, model), key):
             return fid, model, ModelCall(False, None, None, "", "model not available in this run")
         return fid, model, ctx.call_model("challenge", fid, model, "challenge-test", prompt,
-                                          ctx.config.timeouts["verify_s"])
+                                          ctx.config.timeouts["verify_s"], inputs=key)
 
-    jobs = [(fid, m, prompt) for fid, _, _, challengers, prompt in todo for m in challengers]
+    jobs = [(fid, m, prompt, key) for fid, _, _, challengers, prompt, key in todo for m in challengers]
     with ThreadPoolExecutor(max_workers=max(1, ctx.config.parallel)) as pool:
         calls = list(pool.map(one, jobs))
     by_id: dict[str, list] = {fid: [] for fid, *_ in todo}
@@ -96,7 +109,7 @@ def run(ctx: RepoContext) -> list[dict]:
             by_id[fid].append({"challenger": model, "model_id": call.model_id, "failed": call.error or "failed",
                                "unit": call.unit})
     results = []
-    for fid, author, ref, challengers, _ in todo:
+    for fid, author, ref, challengers, *_ in todo:
         ok = [v for v in by_id[fid] if "failed" not in v]
         result, reason = outcome(ok)
         if len(ok) < len(challengers):

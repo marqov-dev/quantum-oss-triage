@@ -24,6 +24,8 @@ Nothing is pushed anywhere.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import shlex
 import shutil
@@ -122,8 +124,11 @@ def _edits_error(edits: list[dict]) -> str | None:
 def attempt(ctx: RepoContext, fid: str, model: str, claim: dict, test_dir: Path, available: set) -> dict:
     rec = {"fixer": model, "model_id": None, "claim_holds": None}
     check_unit = ctx.ledger.unit(ctx.spec.name, "fixgate-check", fid, model)
-    if check_unit.done():
-        return check_unit.payload()
+    key = test_key(test_dir)
+    saved = check_unit.load()
+    # A check stands only for the test it ran: a finding whose best test changed is fixed again.
+    if saved and saved.get("status") == "done" and saved.get("inputs") in (None, key):
+        return saved["payload"]
     if model not in available and not ctx.ledger.unit(ctx.spec.name, "fixgate", fid, model).done():
         return {**rec, "status": "failed", "notes": "model not available in this run"}
     skill = skills.load("blind-fix")
@@ -140,9 +145,9 @@ def attempt(ctx: RepoContext, fid: str, model: str, claim: dict, test_dir: Path,
         rec.update(model_id=call.model_id, claim_holds=prop["claim_holds"], summary=prop["summary"],
                    notes=prop["notes"], unit=call.unit)
         if prop["claim_holds"] == "no":
-            return _done(check_unit, {**rec, "status": "not_a_defect"})
+            return _done(check_unit, key, {**rec, "status": "not_a_defect"})
         if not prop["feasible"] or not prop["edits"]:
-            return _done(check_unit, {**rec, "status": "not_feasible"})
+            return _done(check_unit, key, {**rec, "status": "not_feasible"})
         try:
             if problem := _edits_error(prop["edits"]):
                 raise EditError(problem)
@@ -151,7 +156,7 @@ def attempt(ctx: RepoContext, fid: str, model: str, claim: dict, test_dir: Path,
         except EditError as e:
             problem = str(e)
     if diff is None:
-        return _done(check_unit, {**rec, "status": "edits_invalid", "notes": problem})
+        return _done(check_unit, key, {**rec, "status": "edits_invalid", "notes": problem})
     files = sorted({e["path"] for e in prop["edits"]})
     inputs = out / "inputs"
     inputs.mkdir(parents=True, exist_ok=True)
@@ -168,11 +173,17 @@ def attempt(ctx: RepoContext, fid: str, model: str, claim: dict, test_dir: Path,
         p.write_text(stored)
     rec.update(judge_attempt(r.stdout, r.timed_out), files_changed=files, targets=dirs,
                diff_ref=str((out / "fix.diff").relative_to(ctx.run_dir)), diff_redacted=stored != diff)
-    return rec if rec["status"] == "timed_out" else _done(check_unit, rec)
+    return rec if rec["status"] == "timed_out" else _done(check_unit, key, rec)
 
 
-def _done(unit, rec: dict) -> dict:
-    unit.save("done", rec)
+def test_key(test_dir: Path) -> str:
+    """The test a fix was checked against."""
+    parts = [(test_dir / n).read_text() for n in ("test_qot_repro.py", "test_qot_control.py")]
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()[:16]
+
+
+def _done(unit, key: str, rec: dict) -> dict:
+    unit.save("done", rec, extra={"inputs": key})
     return rec
 
 
