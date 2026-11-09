@@ -73,10 +73,12 @@ class RepoContext:
         return p
 
     def call_model(self, stage: str, unit_skill: str, model: str, skill_name: str, prompt: str,
-                   timeout_s: int) -> ModelCall:
+                   timeout_s: int, inputs: str | None = None) -> ModelCall:
+        """`inputs` names what the answer depends on beyond the unit's key (the test being
+        judged, say): a saved answer for other inputs is asked again. Older records carry none."""
         unit = self.ledger.unit(self.spec.name, stage, unit_skill, model)
         rec = unit.load()
-        if rec and rec["status"] == "done":
+        if rec and rec["status"] == "done" and (inputs is None or rec.get("inputs") in (None, inputs)):
             return ModelCall(True, rec["payload"], rec.get("model_id"), unit.key)
         # A unit the provider refused for capacity is always tried again.
         if rec and rec["status"] == "failed" and not self.retry_failed and not rec.get("capacity_refused"):
@@ -85,7 +87,8 @@ class RepoContext:
         self.log(f"  {stage} {unit_skill} on {model} ...")
         r = self.adapters[model].run(prompt, prompts.SYSTEM, skill.output_schema, self.review_dir, timeout_s)
         meta = dict(tokens=r.tokens, model_id=r.model_id, attempts=r.attempts, duration_s=r.duration_s,
-                    extra={"command": r.command, "skill_sha256": skill.sha256})
+                    extra={"command": r.command, "skill_sha256": skill.sha256,
+                           **({"inputs": inputs} if inputs is not None else {})})
         if r.usage_limited:
             unit.save("usage_limited", {"raw": r.raw[-20000:]}, error=r.error, **meta)
             raise UsageLimitReached(model, unit.key)

@@ -122,7 +122,7 @@ def _ctx(tmp_path, reply, available=("claude", "codex", "antigravity"), worker_o
         {"id": "QOT-1", "outcome": "refuted", "reason": "SECRET-CHALLENGE-REASON"}]}))
     calls, runs, written = [], [], {}
 
-    def call_model(stage, fid, model, skill, prompt, timeout):
+    def call_model(stage, fid, model, skill, prompt, timeout, inputs=None):
         calls.append((fid, model, prompt))
         out = reply(model, fid)
         return ModelCall(True, out, f"{model}-1", "u") if out is not None else ModelCall(False, None, None, "u", "boom")
@@ -207,3 +207,12 @@ def test_a_checked_attempt_is_not_rerun(tmp_path):
     fixgate.run(ctx)
     fixgate.run(ctx)
     assert len(runs) == 2
+
+
+def test_a_changed_test_is_checked_again(tmp_path):
+    ctx, _, runs, _ = _ctx(tmp_path, lambda m, fid: fix())
+    fixgate.run(ctx)
+    test = ctx.repo_dir / "evidence" / "repro" / "QOT-1" / "1" / "test_qot_repro.py"
+    test.write_text("def test_r(): assert A_DIFFERENT_TEST\n")
+    fixgate.run(ctx)
+    assert len(runs) == 4  # both fixes, checked against the new test
