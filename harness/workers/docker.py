@@ -28,7 +28,26 @@ PROXY_PORT = 3128
 _WRAPPER = r"""
 set -u
 git config --global --add safe.directory '*' 2>/dev/null
-if [ "$QOT_COPY" = 1 ]; then cp -R /src/. /work/ || exit 97; fi
+if [ "$QOT_COPY" = 1 ]; then
+  # Copy everything except git's object store, which can be larger than /work
+  # (qilisdk 1.0 GB, pyqrack 1.4 GB). git keeps working in the copy: it reads
+  # objects from the read-only original through an alternates file.
+  for f in /src/* /src/.[!.]* /src/..?*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    if [ "$f" = /src/.git ] && [ -d "$f" ]; then continue; fi
+    cp -R "$f" /work/ || exit 97
+  done
+  if [ -d /src/.git ]; then
+    mkdir -p /work/.git || exit 97
+    for f in /src/.git/* /src/.git/.[!.]*; do
+      [ -e "$f" ] || [ -L "$f" ] || continue
+      if [ "$f" = /src/.git/objects ]; then continue; fi
+      cp -R "$f" /work/.git/ || exit 97
+    done
+    mkdir -p /work/.git/objects/info /work/.git/objects/pack || exit 97
+    echo /src/.git/objects > /work/.git/objects/info/alternates || exit 97
+  fi
+fi
 cd "$QOT_CWD" || exit 98
 ( %s ) >/tmp/qot.out 2>/tmp/qot.err
 rc=$?

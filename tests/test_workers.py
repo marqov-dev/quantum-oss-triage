@@ -59,6 +59,31 @@ def test_container_has_no_network_no_host_env_and_readonly_src(tmp_path, monkeyp
 
 @pytest.mark.docker
 @docker
+def test_writable_copy_leaves_git_objects_in_place_but_git_works(tmp_path):
+    # A large .git once overflowed the 1 GB /work and every test reported "No space left".
+    g = ["git", "-C", str(tmp_path), "-c", "user.email=t@t", "-c", "user.name=t"]
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "a.py").write_text("x = 1\n")
+    (tmp_path / ".hidden").write_text("h")
+    subprocess.run(g + ["add", "-A"], check=True)
+    subprocess.run(g + ["commit", "-qm", "c"], check=True)
+    subprocess.run(g + ["gc", "-q"], check=True)  # objects now live in a pack under .git/objects/pack
+    head = subprocess.run(g + ["rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    r = DockerWorker().run(
+        "cat a.py .hidden; echo; git rev-parse HEAD; git status --porcelain | wc -l; "
+        "ls .git/objects/pack | wc -l; cat .git/objects/info/alternates; git show -s --format=%s HEAD",
+        tmp_path, timeout_s=120)
+    assert r.exit_code == 0, r.stderr
+    lines = r.stdout.split()
+    assert lines[:3] == ["x", "=", "1"] and "h" in lines
+    assert head in lines                       # git reads history from the original
+    assert lines[lines.index(head) + 1] == "0"  # the copy is clean
+    assert lines[lines.index(head) + 2] == "0"  # no pack files copied
+    assert "/src/.git/objects" in lines and lines[-1] == "c"
+
+
+@pytest.mark.docker
+@docker
 def test_container_output_is_capped(tmp_path):
     r = DockerWorker().run("head -c 7000000 /dev/zero | tr '\\0' a", tmp_path, timeout_s=120)
     assert r.truncated and len(r.stdout) <= 5 * 1024 * 1024
