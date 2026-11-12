@@ -12,6 +12,7 @@ import uuid
 from pathlib import Path
 
 from harness.workers.base import MAX_OUTPUT_BYTES, Worker, WorkerResult, venv_installed
+from harness.workers.infra import InfraGuard
 
 DEFAULT_IMAGE = "quantum-oss-triage-worker:dev"
 PROXY_SCRIPT = Path(__file__).resolve().parents[2] / "docker" / "registry-proxy.py"
@@ -64,12 +65,20 @@ exit $rc
 """
 
 
+def _cleanup(cmd: list[str]) -> None:
+    """Best-effort removal: a daemon that has gone away must not hide the real error."""
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=60)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
 class DockerWorker(Worker):
     name = "docker"
 
     def __init__(self, image: str = DEFAULT_IMAGE, cpus: str = "2", memory: str = "2g", pids: int = 256,
                  work_size: str = "1g", tmp_size: str = "512m", docker: str = "docker",
-                 registries: tuple[str, ...] = ("pypi",)):
+                 registries: tuple[str, ...] = ("pypi",), guard: InfraGuard | None = None):
         unknown = [r for r in registries if r not in REGISTRIES]
         if unknown:
             raise ValueError(f"unknown registries {unknown}; known: {sorted(REGISTRIES)}")
@@ -81,6 +90,10 @@ class DockerWorker(Worker):
         self.platform: str | None = None
         self.python: str | None = None
         self.base_image = image
+        # Checks the daemon, image and disk before each launch, and after a failed one, so an
+        # outage raises InfrastructureUnavailable instead of becoming a project's result.
+        # Shared (not copied) by the platform and dependency variants of this worker.
+        self.guard = guard
 
     def variant(self, platform: str | None = None, python: str | None = None) -> "DockerWorker":
         """The same worker with another image variant: the configured tag plus "-py<NN>" for
@@ -111,7 +124,19 @@ class DockerWorker(Worker):
         w.python_path = tuple(python_path)
         return w
 
+    def _preflight(self, image: str | None = None) -> None:
+        if self.guard is not None:
+            self.guard.check(image=image or self.image)
+
+    def _after(self, result: WorkerResult, image: str | None = None) -> WorkerResult:
+        if self.guard is not None and not result.ok:
+            self.guard.raise_if_outage(result.exit_code, result.stderr, image or self.image)
+        return result
+
     def available(self) -> tuple[bool, str]:
+        # With a guard, Docker or the image being down stops the run rather than
+        # degrading it: a stage would otherwise record "worker unavailable" outcomes.
+        self._preflight()
         if not shutil.which(self.docker):
             return False, "docker not installed"
         try:
@@ -182,6 +207,20 @@ class DockerWorker(Worker):
         mounted with exec here (and only here) because build backends run the
         tools they install there (cmake, meson, compilers).
         """
+        self._preflight()
+        self._preflight(self.base_image)  # the registry proxy runs from the base image
+        try:
+            result = self._install_deps(script, src, deps_dir, timeout_s, prefetch_dir)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            # A setup step (network, proxy, logs) failed: Docker going away is the usual cause.
+            if self.guard is not None:
+                err = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+                self.guard.raise_if_outage(getattr(e, "returncode", None), err)
+            raise
+        return self._after(result)
+
+    def _install_deps(self, script: str, src: Path, deps_dir: Path, timeout_s: int,
+                      prefetch_dir: Path | None = None) -> WorkerResult:
         tag = uuid.uuid4().hex[:12]
         net, proxy, name = f"qot-registry-{tag}", f"qot-proxy-{tag}", f"qot-deps-{tag}"
         deps_dir = Path(deps_dir)
@@ -219,18 +258,19 @@ class DockerWorker(Worker):
                                    errors="replace")
                 result = WorkerResult(p.returncode, p.stdout, p.stderr, truncated="[qot: output truncated]" in p.stderr)
             except subprocess.TimeoutExpired:
-                subprocess.run([d, "kill", name], capture_output=True)
+                _cleanup([d, "kill", name])
                 result = WorkerResult(None, "", "timed out", timed_out=True)
             log = subprocess.run([d, "logs", proxy], capture_output=True, text=True, timeout=60).stdout
         finally:
-            subprocess.run([d, "rm", "-f", proxy, name], capture_output=True, timeout=60)
-            subprocess.run([d, "network", "rm", net], capture_output=True, timeout=60)
+            _cleanup([d, "rm", "-f", proxy, name])
+            _cleanup([d, "network", "rm", net])
         result.duration_s = time.monotonic() - start
         result.proxy_log = [json.loads(x) for x in log.splitlines() if x.startswith("{")]
         return result
 
     def run(self, script: str, src: Path, *, inputs: Path | None = None, network: bool = False,
             timeout_s: int = 600, writable_copy: bool = True) -> WorkerResult:
+        self._preflight()
         name = f"qot-{uuid.uuid4().hex[:12]}"
         cmd = self.command(script, src, inputs=inputs, network=network, writable_copy=writable_copy, name=name)
         start = time.monotonic()
@@ -238,9 +278,10 @@ class DockerWorker(Worker):
             p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, stdin=subprocess.DEVNULL,
                                errors="replace")
         except subprocess.TimeoutExpired as e:
-            subprocess.run([self.docker, "kill", name], capture_output=True)
+            _cleanup([self.docker, "kill", name])
             out = e.stdout.decode(errors="replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
-            return WorkerResult(None, out[:MAX_OUTPUT_BYTES], "timed out", timed_out=True,
-                                duration_s=time.monotonic() - start)
-        return WorkerResult(p.returncode, p.stdout, p.stderr, truncated="[qot: output truncated]" in p.stderr,
-                            duration_s=time.monotonic() - start)
+            return self._after(WorkerResult(None, out[:MAX_OUTPUT_BYTES], "timed out", timed_out=True,
+                                            duration_s=time.monotonic() - start))
+        return self._after(WorkerResult(p.returncode, p.stdout, p.stderr,
+                                        truncated="[qot: output truncated]" in p.stderr,
+                                        duration_s=time.monotonic() - start))

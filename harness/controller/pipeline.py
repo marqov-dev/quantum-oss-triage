@@ -1,8 +1,11 @@
 """The controller's main loop: one repository at a time, stage by stage.
 
 All three models finish a repository before the next one starts. If any
-provider reports a usage limit, the repository pauses and the run stops; a
-rerun with the same run directory resumes from the last finished unit.
+provider reports a usage limit, or the worker infrastructure goes away (the
+Docker daemon or image unavailable, or disk space below the configured
+minimum), the repository pauses and the run stops; a rerun with the same run
+directory resumes from the last finished unit. An outage writes no unit, so
+nothing it touched is recorded as a project's result.
 """
 
 from __future__ import annotations
@@ -16,11 +19,13 @@ from harness import adapters as adapter_mod
 from harness.controller import attest, prior, prompts, skills
 from harness.controller.config import Config, RepoSpec
 from harness.controller.context import RepoContext, UsageLimitReached
-from harness.controller.ledger import Ledger
+from harness.controller.ledger import Ledger, now
 from harness.controller.manifest import Manifest
 from harness.stages import challenge, deps, fix, fixgate, gates, pin, review, scan, triage, validate, verify
 from harness.workers.base import Worker
+from harness.workers import infra
 from harness.workers.docker import DockerWorker
+from harness.workers.infra import InfrastructureUnavailable
 
 DEFAULT_STAGES = ("pin", "deps", "scan", "review", "verify", "validate", "gates", "challenge", "fixgate", "triage", "fix")
 
@@ -117,8 +122,10 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
                  "isolation_verified": False, "used": True} for n, a in adapters.items()]
     worker = worker or DockerWorker(image=config.worker["image"], cpus=str(config.worker.get("cpus", "2")),
                                     registries=tuple(config.worker.get("registries") or ("pypi",)),
-                                    memory=config.worker.get("memory", "2g"))
-    summary = {"run_dir": str(run_dir), "repos": {}, "stopped": None}
+                                    memory=config.worker.get("memory", "2g"),
+                                    guard=infra.from_config(config.worker, run_dir))
+    guard = getattr(worker, "guard", None)
+    summary = {"run_dir": str(run_dir), "repos": {}, "stopped": None, "stop_kind": None}
     for spec in repos:
         manifest = Manifest.open(run_dir / spec.slug / "manifest.json", run_id=run_dir.name,
                                  repo={"name": spec.name, "source": spec.source, "commit": "0" * 40,
@@ -131,6 +138,7 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
             repo_worker = worker.variant(platform=spec.worker_platform, python=spec.worker_python)
         ctx = RepoContext(spec, run_dir.name, run_dir, config, ledger, manifest, repo_worker, usable,
                           retry_failed=retry_failed, log=log)
+        manifest.data["interruption"] = None
         manifest.clear_notes("models")
         for a in rows:
             if not a["used"]:
@@ -149,6 +157,8 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
             for stage in stages:
                 current = stage
                 log(f"[{spec.name}] {stage}")
+                if guard is not None:  # disk space, before anything is written
+                    guard.check(docker=False)
                 manifest.clear_notes(stage)
                 manifest.stage(stage, "running")
                 _run_stage(ctx, stage)
@@ -156,8 +166,17 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
                     manifest.stage(stage, "complete")
         except UsageLimitReached as e:
             manifest.stage(current, "paused", note=str(e))
+            manifest.data["interruption"] = {"kind": "usage_limit", "cause": e.adapter, "reason": str(e),
+                                             "stage": current, "at": now()}
             status = "paused"
-            summary["stopped"] = f"usage limit: {e}"
+            summary["stopped"], summary["stop_kind"] = f"usage limit: {e}", "usage_limit"
+        except InfrastructureUnavailable as e:
+            # Not the project's fault and not a result: pause, say why, resume on the next run.
+            manifest.stage(current, "paused", note=f"infrastructure: {e}")
+            manifest.data["interruption"] = {"kind": "infrastructure", "cause": e.kind, "reason": str(e),
+                                             "stage": current, "at": now()}
+            status = "paused"
+            summary["stopped"], summary["stop_kind"] = f"infrastructure: {e}", "infrastructure"
         except Exception as e:  # recorded, never hidden
             manifest.fail(f"{spec.name}/{current}", f"{type(e).__name__}: {e}\n{traceback.format_exc()[-2000:]}")
             manifest.stage(current, "incomplete", note=f"{type(e).__name__} (details in the private run record)")
@@ -170,5 +189,5 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
                                        "dir": str(ctx.repo_dir), "commit": ctx.commit}
         log(f"[{spec.name}] {status}")
         if status == "paused":
-            break  # one repository at a time: pick up here in the next usage window
+            break  # one repository at a time: pick up here in the next usage window, or once Docker is back
     return summary

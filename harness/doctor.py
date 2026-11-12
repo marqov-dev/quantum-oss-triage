@@ -35,6 +35,8 @@ from harness.controller import attest, cleanenv, prompts, skills, snapshot
 from harness.controller.config import Config
 from harness.fixtures import materialise
 from harness.paths import EVALUATIONS_DIR
+from harness.paths import REPO_ROOT
+from harness.workers import infra
 from harness.workers.docker import DockerWorker
 
 
@@ -145,6 +147,9 @@ def run(config: Config, only: list[str] | None = None, log=print) -> dict:
     worker = DockerWorker(image=config.worker["image"])
     ok, info = worker.available()
     out = {"worker": {"available": ok, "info": info}, "adapters": []}
+    guard = infra.from_config(config.worker, REPO_ROOT / "runs")
+    if guard is not None:  # what a run checks before each worker launch
+        out["infrastructure"] = guard.status()
     base = cleanenv.CONFIG_ROOT / "doctor"
     for name, cfg in config.models.items():
         if only and name not in only:

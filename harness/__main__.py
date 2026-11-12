@@ -81,7 +81,10 @@ def main(argv=None) -> int:
                                models=split(args.models), retry_failed=args.retry_failed,
                                require_attestation=False if args.no_attestation_check else None)
         print(json.dumps(summary, indent=2))
-        return 0 if not summary["stopped"] else 3
+        if not summary["stopped"]:
+            return 0
+        # 4: the worker infrastructure (Docker, image, disk) went away; 3: a usage limit.
+        return 4 if summary.get("stop_kind") == "infrastructure" else 3
 
     if args.cmd == "triage-apply":
         from harness.controller.context import RepoContext
@@ -159,6 +162,9 @@ def main(argv=None) -> int:
             data = json.loads(m.read_text())
             stages = ", ".join(f"{k}:{v['status']}" for k, v in data["stages"].items())
             print(f"{data['repo']['name']} @ {data['repo']['commit'][:12]}  {data['status']}  [{stages}]")
+            if data.get("interruption"):
+                i = data["interruption"]
+                print(f"    paused at {i['stage']} ({i['kind']}): {i['reason']}")
             for a, t in data["tokens"].items():
                 print(f"    {a}: {t['units']} units, in {t['input']} out {t['output']} cache {t['cache_read']}")
         return 0

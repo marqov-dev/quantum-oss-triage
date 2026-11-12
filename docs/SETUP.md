@@ -38,6 +38,14 @@ probe for every installed CLI. It records the result per CLI version in
 refuses a CLI version without a passing attestation. After upgrading a CLI,
 run `qot doctor` again.
 
+`qot doctor` also reports what a run checks before each worker launch: that
+the Docker daemon answers, and free space for the run directory and Docker's
+data folder (`worker.preflight` in `config/harness.yaml`). If Docker or the
+worker image becomes unavailable, or space falls below a minimum, during
+`qot run`, the repository is paused with the reason under `interruption` in
+its `manifest.json`, nothing is recorded for the unit that hit it, and the
+command exits 4. Run the same command again once Docker is back.
+
 ### Claude Code: optional fully separate configuration
 
 By default the harness uses your normal Claude Code sign-in, with flags that
