@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -47,6 +48,11 @@ if [ "$QOT_COPY" = 1 ]; then
     mkdir -p /work/.git/objects/info /work/.git/objects/pack || exit 97
     echo /src/.git/objects > /work/.git/objects/info/alternates || exit 97
   fi
+  # Files the project's build produced that its tree lacks (a compiled extension, a
+  # version file), kept by the install step (harness/stages/deps.py). Linked, not copied,
+  # so an extension loads from /deps rather than the noexec tmpfs, and only where the copy
+  # has no file of that name.
+  if [ -d /deps/generated ] && [ "${QOT_INSTALL:-0}" != 1 ]; then cp -Rns /deps/generated/. /work/ || exit 97; fi
 fi
 cd "$QOT_CWD" || exit 98
 ( %s ) >/tmp/qot.out 2>/tmp/qot.err
@@ -71,24 +77,38 @@ class DockerWorker(Worker):
         self.image, self.cpus, self.memory, self.pids = image, cpus, memory, pids
         self.work_size, self.tmp_size, self.docker = work_size, tmp_size, docker
         self.deps_dir: Path | None = None
+        self.python_path: tuple[str, ...] = ()  # extra package roots inside the copy, first on PYTHONPATH
         self.platform: str | None = None
+        self.python: str | None = None
         self.base_image = image
+
+    def variant(self, platform: str | None = None, python: str | None = None) -> "DockerWorker":
+        """The same worker with another image variant: the configured tag plus "-py<NN>" for
+        another Python (built with --build-arg PYTHON_VERSION) and "-<arch>" for another
+        platform, e.g. quantum-oss-triage-worker:dev-py310 or :dev-py310-amd64."""
+        if not platform and not python:
+            return self
+        if python and not re.fullmatch(r"3\.\d{1,2}", python):
+            raise ValueError(f"worker python {python!r} is not of the form 3.N")
+        w = copy.copy(self)
+        w.platform, w.python = platform or self.platform, python or self.python
+        suffix = (f"-py{w.python.replace('.', '')}" if w.python else "") + (
+            f"-{w.platform.split('/')[-1]}" if w.platform else "")
+        w.image = f"{self.base_image}{suffix}"
+        return w
 
     def for_platform(self, platform: str | None) -> "DockerWorker":
         """The same worker, running containers as `platform` with that platform's image
         (the configured tag plus "-<arch>", e.g. quantum-oss-triage-worker:dev-amd64)."""
-        if not platform:
-            return self
-        w = copy.copy(self)
-        w.platform, w.image = platform, f"{self.base_image}-{platform.split('/')[-1]}"
-        return w
+        return self.variant(platform=platform)
 
     def _plat(self) -> list[str]:
         return ["--platform", self.platform] if self.platform else []
 
-    def with_deps(self, deps_dir: Path) -> "DockerWorker":
+    def with_deps(self, deps_dir: Path, python_path: tuple[str, ...] | list[str] = ()) -> "DockerWorker":
         w = copy.copy(self)
         w.deps_dir = Path(deps_dir) if venv_installed(deps_dir) else None
+        w.python_path = tuple(python_path)
         return w
 
     def available(self) -> tuple[bool, str]:
@@ -100,13 +120,20 @@ class DockerWorker(Worker):
         except subprocess.TimeoutExpired:
             return False, "docker daemon not responding"
         if r.returncode != 0:
-            build = f"docker build{' --platform ' + self.platform if self.platform else ''} -f docker/worker.Dockerfile -t {self.image} ."
+            build = (f"docker build{' --platform ' + self.platform if self.platform else ''}"
+                     f"{' --build-arg PYTHON_VERSION=' + self.python if self.python else ''}"
+                     f" -f docker/worker.Dockerfile -t {self.image} .")
             return False, f"image {self.image} not built ({build})"
         return True, r.stdout.strip()
 
     def describe(self) -> dict:
         ok, info = self.available()
-        return {"tag": self.image, "digest": info if ok else None, "available": ok, "note": "" if ok else info}
+        d = {"tag": self.image, "digest": info if ok else None, "available": ok, "note": "" if ok else info}
+        if self.platform:
+            d["platform"] = self.platform
+        if self.python:
+            d["python"] = self.python
+        return d
 
     def command(self, script: str, src: Path, *, inputs: Path | None, network: bool, writable_copy: bool,
                 name: str) -> list[str]:
@@ -131,16 +158,22 @@ class DockerWorker(Worker):
             # Installed dependencies, read-only. The code under review comes
             # from the working copy, which shadows any installed copy of it.
             root = "/work" if writable_copy else "/src"
+            path = ":".join([*(f"{root}/{p}" for p in self.python_path), f"{root}/src", root])
             cmd += ["-v", f"{self.deps_dir.resolve()}:/deps:ro",
                     "-e", "PATH=/deps/venv/bin:/usr/local/bin:/usr/bin:/bin",
-                    "-e", f"PYTHONPATH={root}/src:{root}", "-e", "PYTHONDONTWRITEBYTECODE=1"]
+                    "-e", f"PYTHONPATH={path}", "-e", "PYTHONDONTWRITEBYTECODE=1"]
         return cmd + [self.image, "sh", "-c", wrapper]
 
     def registry_hosts(self) -> tuple[str, ...]:
         return tuple(h for r in self.registries for h in REGISTRIES[r])
 
-    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
+    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800,
+                     prefetch_dir: Path | None = None) -> WorkerResult:
         """Run `script` with network access to the package registry only.
+
+        `prefetch_dir` (source archives the host fetched and checked by sha256,
+        see harness/stages/prefetch.py) is mounted read-only at /prefetch; the
+        script unpacks them inside the container, never on the host.
 
         The install container joins an internal network with no route out; a
         proxy container on that network and the default bridge forwards HTTPS
@@ -176,7 +209,8 @@ class DockerWorker(Worker):
                    "--tmpfs", f"/work:size={self.work_size},uid=65534,gid=65534,mode=0700,exec",
                    "--tmpfs", "/tmp:size=3g,mode=1777,exec",
                    "-v", f"{Path(src).resolve()}:/src:ro", "-v", f"{deps_dir.resolve()}:/deps:rw",
-                   "-e", "HOME=/tmp", "-e", "QOT_COPY=1", "-e", "QOT_CWD=/work",
+                   *(["-v", f"{Path(prefetch_dir).resolve()}:/prefetch:ro"] if prefetch_dir else []),
+                   "-e", "HOME=/tmp", "-e", "QOT_COPY=1", "-e", "QOT_CWD=/work", "-e", "QOT_INSTALL=1",
                    "-e", f"HTTPS_PROXY={url}", "-e", f"https_proxy={url}",
                    "-e", "PIP_DISABLE_PIP_VERSION_CHECK=1", "-e", "PIP_NO_INPUT=1", "-e", "PIP_NO_CACHE_DIR=1",
                    self.image, "sh", "-c", wrapper]

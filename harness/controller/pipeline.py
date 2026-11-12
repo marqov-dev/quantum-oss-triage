@@ -126,7 +126,9 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
         manifest.data["adapters"] = rows
         manifest.data["skills"] = [{"name": s, "sha256": skills.load(s).sha256} for s in skills.available()]
         manifest.data["prompts_sha256"] = prompts.templates_sha256()
-        repo_worker = worker.for_platform(spec.worker_platform) if spec.worker_platform and hasattr(worker, "for_platform") else worker
+        repo_worker = worker
+        if (spec.worker_platform or spec.worker_python) and hasattr(worker, "variant"):
+            repo_worker = worker.variant(platform=spec.worker_platform, python=spec.worker_python)
         ctx = RepoContext(spec, run_dir.name, run_dir, config, ledger, manifest, repo_worker, usable,
                           retry_failed=retry_failed, log=log)
         manifest.clear_notes("models")
@@ -134,7 +136,9 @@ def run(config: Config, run_dir: Path, repos: list[RepoSpec], *, stages=DEFAULT_
             if not a["used"]:
                 manifest.incomplete(f"model {a['name']} not used: {a['reason']}")
         if repo_worker is not None:  # dependencies installed earlier in this run
-            ctx.worker = repo_worker.with_deps(ctx.repo_dir / "deps")
+            installed = ledger.unit(spec.name, "deps", None, None)
+            roots = deps.python_path(ctx.source_dir, installed.payload()) if installed.done() else []
+            ctx.worker = repo_worker.with_deps(ctx.repo_dir / "deps", roots)
         pinned = ledger.unit(spec.name, "pin", None, None)
         if pinned.done():
             ctx.commit = pinned.payload()["commit"]

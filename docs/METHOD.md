@@ -173,12 +173,31 @@ resumes, including a rerun of `qot evaluate` on the same run folder.
    the repository's run folder. Its only network is the package registry: it
    sits on an internal Docker network with no route out, and a proxy container
    forwards HTTPS to `pypi.org` and `files.pythonhosted.org` only, logging
-   every allowed and refused connection. The project itself is uninstalled
-   again, so the code under review always comes from the worker's copy. Later
+   every allowed and refused connection. The project itself stays installed
+   (metadata, entry points), and later workers put the copy first on the
+   path, so the code under review comes from the worker's copy. Later
    workers mount the environment read-only at `/deps` and still run with no
    network. The resolved versions (`pip freeze`) are kept as evidence. A
    failed or partial install is recorded as such; a suite that then fails at
    import is reported, not hidden.
+
+   Per-repository options in `config/repos.yaml` cover what the snapshot
+   alone cannot, and each is recorded in the manifest's `dependencies`:
+   `worker.python` runs every worker for that repository on an image variant
+   with another interpreter (`<tag>-py310`; uv cannot fetch one through the
+   proxy); `deps.local_packages` installs a monorepo's own subpackages from
+   the copy and puts them first on the path; `deps.prefetch` supplies a
+   git submodule or CMake FetchContent source without opening the proxy to
+   git hosts (the host downloads a commit-pinned archive, checks it against a
+   configured sha256 and, optionally, against the commit or tag the snapshot
+   declares; the worker unpacks it from a read-only mount);
+   `deps.source_builds` builds a locked package from such an archive when no
+   wheel fits the platform; `deps.omit` leaves out a locked package that has
+   no distribution for the platform at all. Omissions and source builds mark
+   the run incomplete with their stated reason. Files the build adds to the
+   package that the copy lacks (a compiled extension, a version file) are
+   kept with the environment and linked into later workers' copies where
+   missing, since the copy comes first on the path.
 3. **Scan.** gitleaks, osv-scanner, Semgrep (open Python and secrets rules,
    fetched at image build), zizmor, Ruff, Bandit, lychee (local links only)
    and the project's own tests, each in a worker. OpenSSF Scorecard needs a

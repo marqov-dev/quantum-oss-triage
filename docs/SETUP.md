@@ -21,6 +21,17 @@ docker build -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev .
 uv run qot doctor
 ```
 
+A repository with `worker.python` or `worker.platform` in `config/repos.yaml`
+needs that image variant too. Round one needs Python 3.10 for openqaoa, and
+x86 for ucc and bqskit:
+
+```bash
+docker build --build-arg PYTHON_VERSION=3.10 -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev-py310 .
+docker build --platform linux/amd64 -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev-amd64 .
+```
+
+The dependency stage tells you the exact command if a variant is missing.
+
 `qot doctor` prints the worker image digest and runs the hostile isolation
 probe for every installed CLI. It records the result per CLI version in
 `~/.config/quantum-oss-triage/isolation-attestations.json`. The pipeline
