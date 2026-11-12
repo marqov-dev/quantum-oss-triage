@@ -44,7 +44,8 @@ def _units(repo_dir: Path) -> Counter:
     return c
 
 
-def model_cell(units: Counter, model: str) -> str:
+def model_cell(units: Counter, model: str, owed: dict | None = None) -> str:
+    owed = owed or {}
     # Never a count: how many units a step has would reveal how many claims a model made,
     # and unvalidated suspicions are never counted in public (docs/DISCLOSURE.md).
     def counts(stage):
@@ -54,11 +55,35 @@ def model_cell(units: Counter, model: str) -> str:
     if not total:
         return "not yet"
     if done < total:
-        return "review in progress"
+        return "review not finished"
     done, total = counts("verify")
     if total and done < total:
-        return "cross-check in progress"
+        return "cross-check not finished"
+    # A step never started leaves no unit file, so missing challenges and blind fixes are
+    # found from the records: every test a model did not write needs its challenge and fix.
+    if owed.get("challenge"):
+        return "challenges to go"
+    if owed.get("fixgate"):
+        return "blind fixes to go"
     return "✅"
+
+
+def owed_work(repo_dir: Path, models: list[str]) -> dict[str, dict[str, bool]]:
+    """model -> {"challenge": bool, "fixgate": bool}: whether it still owes a challenge or a
+    blind fix on some test it did not write. Only booleans: no counts reach this page."""
+    out = {m: {"challenge": False, "fixgate": False} for m in models}
+    for stage, file, key, who in (("challenge", "challenge.json", "challenges", "challenger"),
+                                  ("fixgate", "fixgate.json", "attempts", "fixer")):
+        path = repo_dir / file
+        if not path.is_file():
+            continue
+        for f in json.loads(path.read_text()).get("findings", []):
+            # An attempt that failed to run (quota, outage) is still owed.
+            seen = {a.get(who) for a in f.get(key) or [] if not a.get("failed") and a.get("status") != "failed"}
+            for m in models:
+                if m != f.get("author") and m not in seen:
+                    out[m][stage] = True
+    return out
 
 
 def repo_status(repo_dir: Path, models: list[str], published: dict) -> dict:
@@ -74,9 +99,9 @@ def repo_status(repo_dir: Path, models: list[str], published: dict) -> dict:
     report = "in Marqov" if f"{name}:report" in published else ("being checked" if reached == "Fixed blind" else "–")
     if report == "in Marqov":
         reached = "Report"
-    units = _units(repo_dir)
+    units, owed = _units(repo_dir), owed_work(repo_dir, models)
     return {"repo": name, "reached": reached or "–", "report": report,
-            "models": {mo: model_cell(units, mo) for mo in models}}
+            "models": {mo: model_cell(units, mo, owed[mo]) for mo in models}}
 
 
 def build(run_dir: Path, models: list[str], published: dict) -> dict:

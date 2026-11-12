@@ -60,6 +60,15 @@ repos:
   - name: unitaryfoundation/clifft
     source: https://github.com/unitaryfoundation/clifft.git
     ref: main
+    deps:
+      # cmake/FetchFastFloat.cmake git-clones fast_float v8.2.3 from GitHub during the build,
+      # which the proxy refuses, so the extension never built. Supplied as that tag's commit archive.
+      prefetch:
+        - name: fast_float
+          fetchcontent: fast_float
+          url: https://codeload.github.com/fastfloat/fast_float/tar.gz/01ce95dfe46abccf3264fbccf9f5139ea9016cd2
+          sha256: 0aa5e2e3a4f903bf464e5964fe719a330e25a070547cac255b627811c6fe7bdf
+          declared_in: {file: cmake/FetchFastFloat.cmake, contains: tags/v8.2.3}
   # large: one review unit per skill and model cannot cover it all; consider a scope
   - name: PennyLaneAI/pennylane
     source: https://github.com/PennyLaneAI/pennylane.git
@@ -118,6 +127,16 @@ repos:
   - name: qilimanjaro-tech/qilisdk
     source: https://github.com/qilimanjaro-tech/qilisdk.git
     ref: main
+    deps:
+      # CMakeLists.txt FetchContent-downloads Eigen 5.0.1 from fedoraproject.org, which the
+      # proxy refuses, so the C++ extension (qtensor_module) never built. Supplied instead as
+      # the 5.0.1 tag's commit archive from GitLab.
+      prefetch:
+        - name: eigen
+          fetchcontent: eigen
+          url: https://gitlab.com/libeigen/eigen/-/archive/bc3b39870ecb690a623a3f49149a358b95c5781d/eigen-bc3b39870ecb690a623a3f49149a358b95c5781d.tar.gz
+          sha256: 5f6557d1aca6e959a4b955c55f2935261fd30de59c0c79e35bc6d5cbe1de22d1
+          declared_in: {file: CMakeLists.txt, contains: eigen-5.0.1.tar.bz2}
   - name: qilimanjaro-tech/qprogram
     source: https://github.com/qilimanjaro-tech/qprogram.git
     ref: main
@@ -125,6 +144,11 @@ repos:
   - name: quantumlib/Stim
     source: https://github.com/quantumlib/Stim.git
     ref: main
+    deps:
+      # Monorepo: most of the code under review is in the glue packages (stimcirq, sinter,
+      # stimflow), whose tests need cirq-core, networkx and pygltflib. Installed from the copy
+      # in the same resolve as stim itself, as Stim's CI installs glue/cirq.
+      local_packages: [glue/cirq, glue/sample, glue/stimflow]
   # C++; default branch is master
   - name: oscarhiggott/PyMatching
     source: https://github.com/oscarhiggott/PyMatching.git

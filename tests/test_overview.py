@@ -31,16 +31,36 @@ def test_status_reached_and_model_cells(tmp_path):
     assert by["o/done"]["reached"] == "Report" and by["o/done"]["report"] == "in Marqov"
     assert by["o/fixed"]["reached"] == "Fixed blind" and by["o/fixed"]["report"] == "being checked"
     assert by["o/paused"]["reached"] == "Reviewed"  # a paused cross-check is not counted
-    assert by["o/paused"]["models"] == {"claude": "✅", "codex": "not yet", "antigravity": "review in progress"}
+    assert by["o/paused"]["models"] == {"claude": "✅", "codex": "not yet", "antigravity": "review not finished"}
     assert by["o/new"]["reached"] == "–"
     assert dict(s["funnel"]) == {"Reviewed": 3, "Cross-checked": 2, "Tested": 2, "Challenged": 2,
                                  "Fixed blind": 2, "Report": 1}
 
 
+def test_missing_challenges_and_blind_fixes_are_not_ticked(tmp_path):
+    """A step a model never started leaves no unit file; the records show what it still owes."""
+    d = _repo(tmp_path, "o/r", ALL, [("review", m, "done") for m in ("claude", "codex", "antigravity")])
+    (d / "challenge.json").write_text(json.dumps({"findings": [
+        {"author": "codex", "challenges": [{"challenger": "claude"}]}]}))
+    (d / "fixgate.json").write_text(json.dumps({"findings": [
+        {"author": "codex", "attempts": [{"fixer": "claude"}, {"fixer": "antigravity"}]}]}))
+    cells = overview.build(tmp_path, ["claude", "codex", "antigravity"], {})["rows"][0]["models"]
+    assert cells == {"claude": "✅", "codex": "✅", "antigravity": "challenges to go"}
+    (d / "challenge.json").write_text(json.dumps({"findings": [
+        {"author": "codex", "challenges": [{"challenger": "claude"}, {"challenger": "antigravity"}]}]}))
+    (d / "fixgate.json").write_text(json.dumps({"findings": [{"author": "codex", "attempts": [{"fixer": "claude"}]}]}))
+    cells = overview.build(tmp_path, ["claude", "codex", "antigravity"], {})["rows"][0]["models"]
+    assert cells["antigravity"] == "blind fixes to go"
+    (d / "fixgate.json").write_text(json.dumps({"findings": [
+        {"author": "codex", "attempts": [{"fixer": "claude"}, {"fixer": "antigravity", "status": "failed"}]}]}))
+    cells = overview.build(tmp_path, ["claude", "codex", "antigravity"], {})["rows"][0]["models"]
+    assert cells["antigravity"] == "blind fixes to go"  # a failed attempt is still owed
+
+
 def test_codex_cross_check_in_progress(tmp_path):
     _repo(tmp_path, "o/r", {"review": "complete"},
           [("review", "codex", "done"), ("verify", "codex", "done"), ("verify", "codex", "failed")])
-    assert overview.build(tmp_path, ["codex"], {})["rows"][0]["models"]["codex"] == "cross-check in progress"
+    assert overview.build(tmp_path, ["codex"], {})["rows"][0]["models"]["codex"] == "cross-check not finished"
 
 
 def test_page_has_sections_no_findings_and_passes_the_check(tmp_path):

@@ -34,6 +34,10 @@ def test_sections_by_rule():
     assert s(f("security_vulnerability"), PASSED, None, None) == "security"
     assert s(f("dependency_advisory"), None, None, None) == "advisory"
 
+def test_a_finding_marked_sensitive_is_withheld_whatever_its_category():
+    flagged = {**f(), "sensitivity": {"sensitive": True, "reasons": ["set by reviewer"]}}
+    assert tiered.section(flagged, PASSED, {"outcome": "upheld"}, fixes("yes", "yes")) == "security"
+
 
 def test_severity_proposals_are_shown_highest_first():
     assert [p["value"] for p in tiered.proposals(f())] == ["high", "low"]

@@ -241,6 +241,7 @@ class DockerWorker(Worker):
             cap = MAX_OUTPUT_BYTES
             wrapper = _WRAPPER % (script, cap, cap, cap, cap)
             url = f"http://{proxy}:{PROXY_PORT}"
+            jobs = max(1, int(float(self.cpus)))
             cmd = [d, "run", *self._plat(), "--rm", "--name", name, "--network", net,
                    "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
                    "--pids-limit", str(self.pids), "--memory", "4g", "--memory-swap", "4g", "--cpus", self.cpus,
@@ -252,6 +253,9 @@ class DockerWorker(Worker):
                    "-e", "HOME=/tmp", "-e", "QOT_COPY=1", "-e", "QOT_CWD=/work", "-e", "QOT_INSTALL=1",
                    "-e", f"HTTPS_PROXY={url}", "-e", f"https_proxy={url}",
                    "-e", "PIP_DISABLE_PIP_VERSION_CHECK=1", "-e", "PIP_NO_INPUT=1", "-e", "PIP_NO_CACHE_DIR=1",
+                   # The container sees every host core: without a limit a C++ build starts one
+                   # compiler per host core and can exceed the memory limit (qilisdk, 12 Nov).
+                   "-e", f"CMAKE_BUILD_PARALLEL_LEVEL={jobs}", "-e", f"MAKEFLAGS=-j{jobs}",
                    self.image, "sh", "-c", wrapper]
             try:
                 p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, stdin=subprocess.DEVNULL,

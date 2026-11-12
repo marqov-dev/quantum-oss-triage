@@ -2,7 +2,7 @@
 
 No person decides findings one by one. Every finding goes in a section by rule,
 from the gates, the challenge and the blind-fix gate, and each section says how
-strong its evidence is. A person checks a sample and approves the send.
+strong its evidence is. A person approves the send.
 
 Sections:
 
@@ -52,10 +52,12 @@ def _by_id(doc: dict | None) -> dict:
 
 
 def section(f: dict, gate: dict | None, chal: dict | None, fix: dict | None) -> str:
-    if f["category"] == "security_vulnerability":
-        return "security"
     if f["category"] == "dependency_advisory":
         return "advisory"
+    # Withheld by the sensitive flag, not only by category: a reviewer may mark any finding
+    # sensitive (triage decisions.yaml), and its details must then stay out too.
+    if f["category"] == "security_vulnerability" or (f.get("sensitivity") or {}).get("sensitive"):
+        return "security"
     verdict = (gate or {}).get("verdict")
     if verdict != "passed":
         if verdict == "failed" and ((gate or {}).get("head") or {}).get("outcome") == "passes":
@@ -217,16 +219,31 @@ def _sev(i: dict) -> str:
     return ", ".join(f"{p['value']} ({_src(p['by'])})" for p in i["severity"]) or "none proposed"
 
 
+MODEL_NAMES = {"claude": "Claude", "codex": "Codex", "antigravity": "Gemini", "gemini": "Gemini"}
+
+
+def made_by(r: dict) -> str:
+    """Who made the review, stated from the run record: never more models, or more human checking, than ran."""
+    full = [MODEL_NAMES.get(m["cli"], m["cli"]) for m in r["header"].get("models", [])]
+    partial = sorted({MODEL_NAMES[s["model"]] for s in r.get("models", [])
+                      if s["model"] in MODEL_NAMES and s["claims"]} - set(full))
+    who = " and ".join([", ".join(full[:-1]), full[-1]] if len(full) > 2 else full) or "AI models"
+    text = (f"Reviewed by {who}, with fixed-rule tools. The models then checked each other's claims, and their tests "
+            "were run against the code.")
+    if partial:
+        text += f" {' and '.join(partial)}'s part in this review is not finished and will be added in an update."
+    return text + " No person has checked these findings yet. Nothing here has been filed upstream."
+
+
 def to_markdown(r: dict) -> str:
     h, n = r["header"], r["counts"]
     out = [f"# {r['title']}", "",
            f"Reviewed commit `{h['commit'][:12]}`" + (f", rechecked on current main `{h['current_main'][:12]}`"
                                                       if h.get("current_main") else "") + f", {h['review_date']}.", "",
-           "This review was made by AI models and fixed-rule tools, then checked by the models against each other "
-           "and by running tests. A person checked a sample. Nothing here has been filed upstream.", "",
+           made_by(r), "",
            "## Summary", "", "| Section | Count |", "| --- | --- |"]
     out += [f"| {label} | {n[key]} |" for key, label, _ in SECTIONS]
-    out += [f"| Security issues, reported to you separately | {r['security_count']} |", "",
+    out += [f"| Security issues, details withheld from this report | {r['security_count']} |", "",
             "Severities are the models' and tools' proposals, shown as proposed. They are not ours to set.", "",
             f"{r.get('hand_review_only', 0)} of these items came from an earlier review of this repository by hand at Marqov, not "
             "from the models; the models then verified, tested, challenged and fixed them like everything else. "
@@ -411,7 +428,7 @@ def to_blocks(r: dict, charts: dict | None = None) -> list[tuple[str, object]]:
     ready = sum(1 for i in r["items"] if i["fix"] or i.get("prior_fix"))
     rows = [("Likely defects", n["likely"]), ("Models disagree", n["disagree"]), ("Could not test", n["untested"]),
             ("Probably not defects", n["weak"]), ("Fixed on your main", n["fixed_upstream"]),
-            ("Dependency advisories", n["advisory"]), ("Security, sent separately", r["security_count"])]
+            ("Dependency advisories", n["advisory"]), ("Security issues, details withheld", r["security_count"])]
     top = max(c for _, c in rows) or 1
     parts: list[tuple[str, object]] = [("markdown", "\n".join([
         f"# {r['title']}", "",
@@ -424,8 +441,9 @@ def to_blocks(r: dict, charts: dict | None = None) -> list[tuple[str, object]]:
         "| Where the findings landed | Count |", "| --- | --- |",
         *[f"| {label} | {bar(c, top)} {c} |" for label, c in rows], "",
         "The first four rows run from the strongest evidence to the weakest.", "",
-        "Made by three AI models and fixed-rule tools, then checked by the models against each other and by running "
-        "tests. A person read a sample before sending. Nothing here has been filed upstream."]))]
+        made_by(r), "",
+        "Security issues are counted only. Their details are not in this report; under our disclosure policy they "
+        "are reported to you privately."]))]
     parts += [_h2("How to read this report"), ("markdown", "\n".join([
         "Each finding sits in a section by the strength of its evidence, strongest first. Each card shows the claim, "
         "its checks (✅ passed, ⚠️ unsettled, ❌ failed), and where to find its test and fix.", "",

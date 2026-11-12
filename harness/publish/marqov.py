@@ -176,6 +176,8 @@ class PlannedDoc:
     # markdown block holding `content`. With parts, `content` must be their markdown joined,
     # so the sensitive-content gate checks exactly what is uploaded.
     parts: list = field(default_factory=list)
+    # Exact phrases a person approved for this document (redact.load_approvals).
+    approved_phrases: tuple = ()
 
     @property
     def sha256(self) -> str:
@@ -186,7 +188,7 @@ class PlannedDoc:
         return h.hexdigest()
 
     def gate(self) -> list[str]:
-        return redact.check(self.content, self.sensitive)
+        return redact.check(self.content, self.sensitive, approved_phrases=self.approved_phrases)
 
 
 def idempotency_key(project_id: str, doc: PlannedDoc) -> str:
