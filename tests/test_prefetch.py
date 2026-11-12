@@ -182,3 +182,20 @@ def test_omitted_and_source_built_packages_leave_the_locked_set(tmp_path):
     (tmp_path / "uv.lock").unlink()
     with pytest.raises(ValueError, match="uv.lock"):
         deps.plan(tmp_path, omit=[{"package": "x", "reason": "y"}])
+
+
+def test_install_worker_limits_build_jobs_to_its_cpus(tmp_path, monkeypatch):
+    """The container sees every host core, so an unlimited parallel C++ build can exceed its memory."""
+    seen = []
+
+    class P:
+        returncode, stdout, stderr = 0, "", ""
+
+    monkeypatch.setattr("harness.workers.docker.subprocess.run", lambda cmd, **kw: seen.append(cmd) or P())
+    DockerWorker(cpus="2").install_deps("true", tmp_path, tmp_path / "deps")
+    run = next(c for c in seen if "qot-deps-" in " ".join(c) and c[1] == "run")
+    assert "CMAKE_BUILD_PARALLEL_LEVEL=2" in run and "MAKEFLAGS=-j2" in run
+    seen.clear()
+    DockerWorker(cpus="0.5").install_deps("true", tmp_path, tmp_path / "deps")
+    run = next(c for c in seen if "qot-deps-" in " ".join(c) and c[1] == "run")
+    assert "CMAKE_BUILD_PARALLEL_LEVEL=1" in run

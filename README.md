@@ -58,6 +58,8 @@ comparable and checkable.
 ```bash
 uv sync
 docker build -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev .
+# only for projects that set worker.python in config/repos.yaml (openqaoa uses 3.10):
+docker build --build-arg PYTHON_VERSION=3.10 -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev-py310 .
 uv run qot sandbox-build     # reviewer sandboxes for Codex and Antigravity
 uv run qot sandbox-login agy # sign a CLI in inside its sandbox (once)
 uv run qot doctor            # checks the worker and each installed CLI's isolation
@@ -85,8 +87,22 @@ personal plan. See [docs/SETUP.md](docs/SETUP.md).
 
 ## Status
 
-Version 0.1, built for round one. See [docs/METHOD.md](docs/METHOD.md#status-of-v01)
+Version 0.1, built for round one. See [docs/METHOD.md](docs/METHOD.md#status)
 for what works, what is stubbed and what is not built yet.
+
+### Round one progress (12 November 2026)
+
+- All 24 repositories have been reviewed by Claude and Codex through every
+  stage, from scanning to the blind fix. Gemini's review is partial and will
+  be added when its usage limit resets.
+- Every repository with a Python package now installs in the worker, with its
+  compiled extensions. Several needed per-repository install options: an older
+  Python, packages inside the repository, a package built from source, or a
+  source archive pinned by hash and supplied in place of a download the sandbox
+  blocks. Those options are in `config/repos.yaml`.
+- No person has checked the findings yet, and nothing has been filed with any
+  project. Findings are reported to each project's maintainers privately first,
+  under [docs/DISCLOSURE.md](docs/DISCLOSURE.md), and are not published here.
 
 ## Licence
 
