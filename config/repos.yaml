@@ -24,6 +24,25 @@ repos:
   - name: unitaryfoundation/metriq-gym
     source: https://github.com/unitaryfoundation/metriq-gym.git
     ref: main
+    deps:
+      # pyqpanda3 0.5.0 publishes x86_64, macOS and Windows wheels only and no sdist (closed
+      # source), so it cannot install on linux/aarch64. metriq-gym checks for it at run time
+      # (run.py) and its tests mock it. The alternative is worker.platform: linux/amd64.
+      omit:
+        - package: pyqpanda3
+          reason: no linux/aarch64 wheel and no sdist (closed-source OriginQ SDK); metriq-gym checks for it at run time
+      # Two git submodules the package build includes (tool.setuptools.packages.find).
+      prefetch:
+        - name: QC-App-Oriented-Benchmarks
+          url: https://codeload.github.com/SRI-International/QC-App-Oriented-Benchmarks/tar.gz/f17aae39079a9a37956eada52d0300ffa90d01da
+          sha256: c0eecbedad9e3fc5d6dfc0725b8510e17b3e11e486d34e280b05c8798b73b6d0
+          extract_to: submodules/QC-App-Oriented-Benchmarks
+          declared_in: {submodule: submodules/QC-App-Oriented-Benchmarks}
+        - name: qiskit-device-benchmarking
+          url: https://codeload.github.com/qiskit-community/qiskit-device-benchmarking/tar.gz/028e439e6f511d9c6f72a77a5ddcc426e0619f5a
+          sha256: 77e643f201a98a0d80c6ccf177896dd3367a7fd1805edb5f405ef23e5190fd80
+          extract_to: submodules/qiskit-device-benchmarking
+          declared_in: {submodule: submodules/qiskit-device-benchmarking}
   - name: unitaryfoundation/mitiq
     source: https://github.com/unitaryfoundation/mitiq.git
     ref: main
@@ -66,6 +85,36 @@ repos:
   - name: PCSS-Quantum/open-qbench
     source: https://github.com/PCSS-Quantum/open-qbench.git
     ref: new_architecture
+    deps:
+      # tests/test_apps.py imports open_qbench.apps, which needs scikit-image (QSVM) and
+      # qiskit-nature (VQE).
+      # The ORCA tests need ORCA's private ptseries SDK; "ptseries" on PyPI is an unrelated
+      # placeholder package, so it is deliberately not installed and those tests error at import.
+      extras: [QSVM, VQE]
+      # Locked pyqubo 1.5.0 (via qlauncher) has no linux/aarch64 wheel and no sdist; older
+      # pyqubo sdists lack CMakeLists.txt. Built from its 1.5.0 tag, with the 15 sources its
+      # CMake fetches (external/*.cmake at that tag) prefetched by commit.
+      source_builds:
+        - package: pyqubo
+          prefetch: pyqubo
+          reason: pyqubo 1.5.0 has no linux/aarch64 wheel and no sdist; built from its 1.5.0 tag
+      prefetch:
+        - {name: pyqubo, url: https://codeload.github.com/recruit-communications/pyqubo/tar.gz/717c680dae392e769191f359e41c57445137af5d, sha256: 623e7f50f61b1dfae6af154404434bc05a88d195c0d0c470eb8fc082d98018ff}
+        - {name: boost_assert, fetchcontent: boost_assert, url: https://codeload.github.com/boostorg/assert/tar.gz/f10ddd608e087a89ee5bfc41cf2987cc5ef61473, sha256: e6ef31bf4ed717a6224292f483243d197efce07c387025c5860941f19f4df8e3}
+        - {name: boost_config, fetchcontent: boost_config, url: https://codeload.github.com/boostorg/config/tar.gz/aed3dd07270d770f3075dd5384037b7c7b746a2f, sha256: 8ab56db2d55766f0c61dbc794c8066ba2cb2bd73f641b08c8fe79034a1ee7825}
+        - {name: boost_container, fetchcontent: boost_container, url: https://codeload.github.com/boostorg/container/tar.gz/1dc1e7466865433d64fb0bf2bfd00c4f746195f9, sha256: 15d684f926978718ab2192457408b992b5dc274c4e62c6e96d92a3836c6a763d}
+        - {name: boost_container_hash, fetchcontent: boost_container_hash, url: https://codeload.github.com/boostorg/container_hash/tar.gz/171c012d4723c5e93cc7cffe42919afdf8b27dfa, sha256: 271fbf53db33ab50b6a946db7f81fda160a23b2a824eb64d762f0a8f64eea9e4}
+        - {name: boost_core, fetchcontent: boost_core, url: https://codeload.github.com/boostorg/core/tar.gz/ddbaa242a99f62eda6aa9db1e3abc0c4bc36134f, sha256: 7e93bb387d0318bc4904999eadbe0c52346e0ce401310732bec951d98bad8ffe}
+        - {name: boost_detail, fetchcontent: boost_detail, url: https://codeload.github.com/boostorg/detail/tar.gz/131208d8ccd82ef69afb9cf0bad1a314bd931d88, sha256: 306141310c7c9507536738e43e25059831c8c93b3bc94220a2e2dd43528497a4}
+        - {name: boost_integer, fetchcontent: boost_integer, url: https://codeload.github.com/boostorg/integer/tar.gz/be13dbce6d74515c4d15a2efbcae87af2e0fbe53, sha256: 104c09cbacb0b2d59853463306d0600811cc4ca6baa68c1015a40c21ec4dacc0}
+        - {name: boost_intrusive, fetchcontent: boost_intrusive, url: https://codeload.github.com/boostorg/intrusive/tar.gz/5c5f596d12e95b5249a82df235e03151976389a1, sha256: 8b458ba5800deddd0559bd30fb33f7ea6a5150192699a15c0ac7b37577345cd8}
+        - {name: boost_move, fetchcontent: boost_move, url: https://codeload.github.com/boostorg/move/tar.gz/1164b93fb806f1ccbb2ca20f8455e4a167de0458, sha256: cb031a2cdd1057af662eccaf63ca5deb06eae4d3629c84ab2fcc40f7daa35e03}
+        - {name: boost_static_assert, fetchcontent: boost_static_assert, url: https://codeload.github.com/boostorg/static_assert/tar.gz/073c48260658b799e67d56f117ef4ada09f66e06, sha256: 15968219cc58235766137c6fec3a51b7c56acc9fd48c668e0febccfb34cabafa}
+        - {name: boost_type_traits, fetchcontent: boost_type_traits, url: https://codeload.github.com/boostorg/type_traits/tar.gz/30396ed792697b5a5a7c4f02f7e22ae8d6ad95fd, sha256: d1ee9a135688aadb68b3feed15be1c39f04c1db5998070a0a43f3a6afda39079}
+        - {name: cimod, fetchcontent: cimod, url: https://codeload.github.com/OpenJij/cimod/tar.gz/cdbc1daa29df3ca5692df444ffed5a93152d468a, sha256: 0241c4480f27001031032c8a802e38c7d4dcd5d20b96fa76ab4622f9a002f453}
+        - {name: eigen, fetchcontent: eigen, url: https://gitlab.com/libeigen/eigen/-/archive/21ae2afd4edaa1b69782c67a54182d34efe43f9c/eigen-21ae2afd4edaa1b69782c67a54182d34efe43f9c.tar.gz, sha256: 39563ef83be3044e730da01db363418a67070d140d9eec97c945eeb038391f9f}
+        - {name: pybind11, fetchcontent: pybind11, url: https://codeload.github.com/pybind/pybind11/tar.gz/a2e59f0e7065404b44dfe92a28aca47ba1378dc4, sha256: 1da0a5c38950e4f49329e9de10c59b2527840a1b963113f1c53b455971cd6aef}
+        - {name: robin_hood, fetchcontent: robin_hood, url: https://codeload.github.com/martinus/robin-hood-hashing/tar.gz/24b3f50f9532153edc23b29ae277dcccfd75a462, sha256: a49bcd5c37084fb68d8719de9a95c8d07b9be29ebcc6380fda992faad36aca9f}
   - name: qilimanjaro-tech/qilisdk
     source: https://github.com/qilimanjaro-tech/qilisdk.git
     ref: main
@@ -80,12 +129,38 @@ repos:
   - name: oscarhiggott/PyMatching
     source: https://github.com/oscarhiggott/PyMatching.git
     ref: master
+    deps:
+      # The build needs the pybind11 submodule and two CMake FetchContent sources from GitHub.
+      prefetch:
+        - name: pybind11
+          url: https://codeload.github.com/pybind/pybind11/tar.gz/a2e59f0e7065404b44dfe92a28aca47ba1378dc4
+          sha256: 1da0a5c38950e4f49329e9de10c59b2527840a1b963113f1c53b455971cd6aef
+          extract_to: pybind11
+          declared_in: {submodule: pybind11}
+        - name: googletest
+          url: https://codeload.github.com/google/googletest/tar.gz/58d77fa8070e8cec2dc1ed015d66b454c8d78850
+          sha256: c6ab3b6b33f51ef7465921f8f8c10c15d7cbc510761a15a18ad85babf6d73278
+          fetchcontent: googletest
+          declared_in: {file: CMakeLists.txt, contains: GIT_TAG release-1.12.1}
+        - name: stim
+          url: https://codeload.github.com/quantumlib/Stim/tar.gz/1320ad7eac7de34d2e9c70daa44fbc6d84174450
+          sha256: 5c1cb841d465e3a60787ff91ea20e984276ed39ac9cdfebf64086a37311aebc0
+          fetchcontent: stim
+          declared_in: {file: CMakeLists.txt, contains: GIT_TAG 1320ad7eac7de34d2e9c70daa44fbc6d84174450}
   - name: ionq/ionq-core
     source: https://github.com/ionq/ionq-core.git
     ref: main
   - name: entropicalabs/openqaoa
     source: https://github.com/entropicalabs/openqaoa.git
     ref: main
+    # setup.py: python_requires ">=3.8, <3.11"; CI tests 3.9 and 3.10.
+    worker:
+      python: "3.10"
+    deps:
+      # A monorepo: the root pins its src/ subpackages by version, so they are installed from
+      # the copy (as its Makefile does), not from PyPI. [tests] as in make dev-install-tests.
+      local_packages: ["src/openqaoa-core[tests]", src/openqaoa-qiskit, src/openqaoa-pyquil,
+                       src/openqaoa-braket, src/openqaoa-azure]
   - name: entropicalabs/el-loom
     source: https://github.com/entropicalabs/el-loom.git
     ref: main
@@ -96,6 +171,14 @@ repos:
   - name: unitaryfoundation/pyqrack
     source: https://github.com/unitaryfoundation/pyqrack.git
     ref: main
+    deps:
+      # setup.py runs make build-deps, which git-clones qrack at a pinned commit unless qrack/ exists.
+      prefetch:
+        - name: qrack
+          url: https://codeload.github.com/unitaryfund/qrack/tar.gz/db84c82095c92cb02b1bc005133c6ee09f1d11cb
+          sha256: 42004699656adec502ce0ae68005c31394404c5cdf8b1d2dd6ba0fa4a2e1f145
+          extract_to: qrack
+          declared_in: {file: Makefile, contains: git checkout db84c82095c92cb02b1bc005133c6ee09f1d11cb}
   # Depends on bqskitrs, which has x86_64 wheels only, so it installs partly on aarch64
   - name: BQSKit/bqskit
     source: https://github.com/BQSKit/bqskit.git

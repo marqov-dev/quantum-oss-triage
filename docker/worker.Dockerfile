@@ -5,7 +5,15 @@
 # it (dependency install, osv-scanner database fetch). See docs/METHOD.md.
 #
 # Build:  docker build -f docker/worker.Dockerfile -t quantum-oss-triage-worker:dev .
-FROM python:3.12-slim
+#
+# A project that needs another Python (worker.python in config/repos.yaml) runs
+# in a variant built from this same file, tagged "<tag>-py<major><minor>":
+#   docker build --build-arg PYTHON_VERSION=3.10 -f docker/worker.Dockerfile \
+#     -t quantum-oss-triage-worker:dev-py310 .
+# uv cannot download an interpreter at run time (the registry proxy allows
+# package registries only), so the interpreter has to be in the image.
+ARG PYTHON_VERSION=3.12
+FROM python:${PYTHON_VERSION}-slim
 
 ARG TARGETARCH
 ARG GITLEAKS_VERSION=8.30.1

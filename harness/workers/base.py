@@ -42,12 +42,15 @@ class Worker:
         /inputs an optional read-only directory of harness-provided files."""
         raise NotImplementedError
 
-    def with_deps(self, deps_dir: Path) -> "Worker":
-        """The same worker, with a repository's installed dependencies available."""
+    def with_deps(self, deps_dir: Path, python_path: tuple[str, ...] | list[str] = ()) -> "Worker":
+        """The same worker, with a repository's installed dependencies available
+        (and `python_path`, package roots inside the copy, first on the path)."""
         return self
 
-    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800) -> WorkerResult:
-        """Run an install script with registry-only network access, writing to /deps."""
+    def install_deps(self, script: str, src: Path, deps_dir: Path, *, timeout_s: int = 1800,
+                     prefetch_dir: Path | None = None) -> WorkerResult:
+        """Run an install script with registry-only network access, writing to /deps
+        (and `prefetch_dir`, host-fetched source archives, read-only at /prefetch)."""
         return WorkerResult(None, "", f"{self.name} worker cannot install dependencies")
 
 

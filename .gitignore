@@ -5,3 +5,6 @@ __pycache__/
 # Run records hold unredacted findings: they belong in the private runs repository.
 runs/
 outbox/
+
+# Local Claude Code worktrees.
+.claude/
