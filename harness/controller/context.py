@@ -84,8 +84,18 @@ class RepoContext:
         if rec and rec["status"] == "failed" and not self.retry_failed and not rec.get("capacity_refused"):
             return ModelCall(False, None, rec.get("model_id"), unit.key, rec.get("error"))
         skill = skills.load(skill_name)
+        adapter = self.adapters[model]
+        guard = getattr(getattr(self, "worker", None), "guard", None)
+        sandbox = getattr(adapter, "sandbox", None)
+        sandbox_image = getattr(sandbox, "image", None) if sandbox is not None else None
+        if guard is not None:  # a CLI in a reviewer sandbox needs Docker; every call needs disk
+            guard.check(image=sandbox_image, docker=sandbox is not None)
         self.log(f"  {stage} {unit_skill} on {model} ...")
-        r = self.adapters[model].run(prompt, prompts.SYSTEM, skill.output_schema, self.review_dir, timeout_s)
+        r = adapter.run(prompt, prompts.SYSTEM, skill.output_schema, self.review_dir, timeout_s)
+        if guard is not None and sandbox is not None and not r.ok and not r.usage_limited:
+            # The sandbox container may have failed because Docker went away: then this
+            # unit says nothing about the model, so nothing is saved and the run pauses.
+            guard.raise_if_outage(None, r.error or "", sandbox_image)
         meta = dict(tokens=r.tokens, model_id=r.model_id, attempts=r.attempts, duration_s=r.duration_s,
                     extra={"command": r.command, "skill_sha256": skill.sha256,
                            **({"inputs": inputs} if inputs is not None else {})})

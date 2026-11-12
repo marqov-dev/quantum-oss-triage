@@ -37,6 +37,19 @@ worker:
   # Rust extensions built with maturin or setuptools-rust. Git hosts and other
   # URLs are always refused.
   registries: [pypi, crates]
+  # Checked before each worker or reviewer-sandbox launch (cached for cache_s)
+  # and again after any failed one. If the Docker daemon or the image is
+  # unavailable, or free space is below a minimum, the run pauses with the
+  # reason in manifest.json ("interruption") and writes nothing for the unit
+  # that hit it; `qot run` exits 4 and the same command resumes there.
+  preflight:
+    run_dir_min_free_gb: 8
+    # "auto": Docker Desktop's DataFolder setting (the daemon's own root is
+    # inside its VM). A path to check another folder; null to skip.
+    docker_data_path: auto
+    docker_data_min_free_gb: 40
+    cache_s: 5
+    docker_timeout_s: 10
 
 timeouts:
   review_s: 1500

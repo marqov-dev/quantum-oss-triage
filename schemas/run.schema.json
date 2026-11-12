@@ -68,6 +68,18 @@
     "started_at": {"type": "string"},
     "finished_at": {"type": ["string", "null"]},
     "status": {"type": "string", "enum": ["running", "complete", "incomplete", "paused", "failed"]},
+    "interruption": {
+      "description": "Why a paused run stopped: a provider's usage limit, or the worker infrastructure (Docker daemon, worker image, disk space) being unavailable. Null when the last run was not interrupted. A rerun with the same command resumes at `stage`.",
+      "type": ["object", "null"],
+      "required": ["kind", "cause", "reason", "stage", "at"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["usage_limit", "infrastructure"]},
+        "cause": {"type": "string", "description": "The adapter for a usage limit; docker, image or disk for infrastructure."},
+        "reason": {"type": "string"},
+        "stage": {"type": ["string", "null"]},
+        "at": {"type": "string"}
+      }
+    },
     "stages": {
       "type": "object",
       "additionalProperties": {
