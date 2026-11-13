@@ -412,3 +412,12 @@ def test_cli_exits_4_on_an_infrastructure_stop(monkeypatch):
     monkeypatch.setattr(pipeline, "run", lambda *a, **k: {"run_dir": "r", "repos": {}, "stopped": "usage limit: x",
                                                           "stop_kind": "usage_limit"})
     assert cli.main(["run", "--run-dir", "unused"]) == 3
+
+
+def test_round_two_candidates_file_loads():
+    from harness.controller.config import REPO_ROOT, load_repos
+    round_one = {r.name for r in load_repos()}
+    round_two = load_repos(REPO_ROOT / "config" / "repos-round2.yaml")
+    assert len(round_two) == 21
+    assert not round_one & {r.name for r in round_two}
+    assert all(r.source == f"https://github.com/{r.name}.git" for r in round_two)

@@ -35,6 +35,30 @@ While this project is spun out of an internal effort at [Marqov](https://marqov.
 The list lives in `config/repos.yaml`. Listing a project means it is in scope
 for review, not that its maintainers are involved or have endorsed the work.
 
+### Candidates for round two
+
+| Organisation | Repositories |
+| --- | --- |
+| Riverlane | [deltakit](https://github.com/Deltakit/deltakit), [deltakit-compile](https://github.com/Deltakit/deltakit-compile), [deltakit-circuit](https://github.com/Deltakit/deltakit-circuit), [deltakit-stim](https://github.com/Deltakit/deltakit-stim) |
+| Xanadu | [pennylane-lightning](https://github.com/PennyLaneAI/pennylane-lightning), [catalyst](https://github.com/PennyLaneAI/catalyst) |
+| CESGA | [cunqa](https://github.com/CESGA-Quantum-Spain/cunqa) |
+| openQSE | [QFw](https://github.com/openQSE/QFw) |
+| Converged Computing | [flux-quantum](https://github.com/converged-computing/flux-quantum) |
+| Munich Quantum Toolkit | [core](https://github.com/munich-quantum-toolkit/core) |
+| Munich Quantum Software Stack | [QDMI](https://github.com/Munich-Quantum-Software-Stack/QDMI) |
+| IQM | [sdk](https://github.com/iqm-finland/sdk) (iqm-client) |
+| Quandela | [Perceval](https://github.com/Quandela/Perceval) |
+| Infleqtion | [client-superstaq](https://github.com/Infleqtion/client-superstaq) |
+| qLDPC | [qLDPC](https://github.com/qLDPCOrg/qLDPC) |
+| Graphix | [graphix](https://github.com/TeamGraphix/graphix) |
+| Inria QAT | [veriphix](https://github.com/qat-inria/veriphix) |
+| Alice & Bob | [qiskit-alice-bob-provider](https://github.com/Alice-Bob-SW/qiskit-alice-bob-provider), [anb-estimator](https://github.com/Alice-Bob-SW/anb-estimator), [felis](https://github.com/Alice-Bob-SW/felis) |
+| Dynamiqs | [dynamiqs](https://github.com/dynamiqs/dynamiqs) |
+
+These are in `config/repos-round2.yaml`. This is a candidate list, and it will
+be narrowed down before round two runs. None has been reviewed yet, and the
+same caveat applies: listing is not endorsement.
+
 ## What is here
 
 | Path | What it is |
