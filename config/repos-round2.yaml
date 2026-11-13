@@ -1,0 +1,91 @@
+# Candidates for round two (listed 2026-11-13). Not approved to run.
+# A long list: it will be narrowed down before round two runs.
+#
+# Kept apart from repos.yaml so round one's runs and overview are unchanged.
+# Use it with: qot run --repos-file config/repos-round2.yaml
+#
+# Listing a project means it is in scope for review, not that its maintainers
+# are involved or have endorsed the work. None of these has been installed in
+# the worker yet; the notes say what each is expected to need.
+repos:
+  - name: Deltakit/deltakit
+    source: https://github.com/Deltakit/deltakit.git
+    ref: main
+  # C++ with Python bindings; a large native build
+  - name: PennyLaneAI/pennylane-lightning
+    source: https://github.com/PennyLaneAI/pennylane-lightning.git
+    ref: main
+  # Builds on LLVM and MLIR; expected to need a larger worker than 2 CPUs and 2 GB
+  - name: PennyLaneAI/catalyst
+    source: https://github.com/PennyLaneAI/catalyst.git
+    ref: main
+  # C++; expects Slurm and MPI, which the worker does not have
+  - name: CESGA-Quantum-Spain/cunqa
+    source: https://github.com/CESGA-Quantum-Spain/cunqa.git
+    ref: main
+  # Expects an HPC runtime, which the worker does not have
+  - name: openQSE/QFw
+    source: https://github.com/openQSE/QFw.git
+    ref: main
+  # Small and early; expects the Flux scheduler
+  - name: converged-computing/flux-quantum
+    source: https://github.com/converged-computing/flux-quantum.git
+    ref: main
+  # Siblings of deltakit
+  - name: Deltakit/deltakit-compile
+    source: https://github.com/Deltakit/deltakit-compile.git
+    ref: main
+  - name: Deltakit/deltakit-circuit
+    source: https://github.com/Deltakit/deltakit-circuit.git
+    ref: main
+  # C++
+  - name: Deltakit/deltakit-stim
+    source: https://github.com/Deltakit/deltakit-stim.git
+    ref: main
+  # C++ with Python bindings; large repository (about 215 MB)
+  - name: munich-quantum-toolkit/core
+    source: https://github.com/munich-quantum-toolkit/core.git
+    ref: main
+  # C and C++ interface definition; default branch is develop
+  - name: Munich-Quantum-Software-Stack/QDMI
+    source: https://github.com/Munich-Quantum-Software-Stack/QDMI.git
+    ref: develop
+  # A read-only mirror: IQM archived iqm-client and qiskit-on-iqm in July 2026 and publishes
+  # source here by SDK version. It takes no issues or pull requests, so findings would go to
+  # IQM directly. Scoped to iqm-client in one version; update the path with each SDK release.
+  - name: iqm-finland/sdk
+    source: https://github.com/iqm-finland/sdk.git
+    ref: main
+    scope:
+      include: ["src/4.8.0/iqm-client"]
+  - name: Quandela/Perceval
+    source: https://github.com/Quandela/Perceval.git
+    ref: main
+  - name: Infleqtion/client-superstaq
+    source: https://github.com/Infleqtion/client-superstaq.git
+    ref: main
+  - name: qLDPCOrg/qLDPC
+    source: https://github.com/qLDPCOrg/qLDPC.git
+    ref: main
+  # default branch is master
+  - name: TeamGraphix/graphix
+    source: https://github.com/TeamGraphix/graphix.git
+    ref: master
+  - name: qat-inria/veriphix
+    source: https://github.com/qat-inria/veriphix.git
+    ref: main
+  - name: Alice-Bob-SW/qiskit-alice-bob-provider
+    source: https://github.com/Alice-Bob-SW/qiskit-alice-bob-provider.git
+    ref: main
+  # Rust; an extension of the Q# resource estimator for cat qubits
+  - name: Alice-Bob-SW/anb-estimator
+    source: https://github.com/Alice-Bob-SW/anb-estimator.git
+    ref: main
+  # Mostly documentation, samples and a Dockerfile; last pushed March 2026
+  - name: Alice-Bob-SW/felis
+    source: https://github.com/Alice-Bob-SW/felis.git
+    ref: main
+  # Built on JAX
+  - name: dynamiqs/dynamiqs
+    source: https://github.com/dynamiqs/dynamiqs.git
+    ref: main
