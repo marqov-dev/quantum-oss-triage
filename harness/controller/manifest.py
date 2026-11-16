@@ -51,7 +51,8 @@ class Manifest:
             self.data["failures"].append({"unit": unit, "error": error[:1000]})
 
     _PREFIXES = {"models": ("model ",), "pin": ("pin",), "deps": ("dependencies",), "scan": ("scanner ",), "review": ("review",),
-                 "verify": ("verification",), "validate": ("validate",)}
+                 "verify": ("verification",), "validate": ("validate",), "gates": ("gates",),
+                 "challenge": ("challenge",), "fixgate": ("fixgate",)}
 
     def clear_notes(self, stage: str) -> None:
         """Drop the incomplete-check notes and failures a stage produced last time."""
