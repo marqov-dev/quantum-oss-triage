@@ -210,3 +210,20 @@ def test_fix_edits_must_match_exactly_once_and_stay_inside(tmp_path, repo, confi
         with pytest.raises(fix_stage.EditError):
             fix_stage.build_diff(ctx, "QOT-x", bad)
     assert not (tmp_path / "escape.py").exists()
+
+
+@pytest.mark.parametrize("stage, note", [
+    ("challenge", "challenge: 1 of 8 units failed (shown as unsettled)"),
+    ("gates", "gates: worker unavailable: docker down"),
+    ("fixgate", "fixgate: 2 of 5 attempts could not run (shown as unsettled)"),
+])
+def test_rerunning_a_stage_clears_its_old_notes(tmp_path, stage, note):
+    # A rerun that now succeeds must not keep last run's "not complete" note for that stage.
+    from harness.controller.manifest import Manifest
+    m = Manifest.open(tmp_path / "manifest.json", run_id="r", repo={})
+    m.incomplete(note)
+    m.incomplete("scanner scorecard: unavailable (needs a token)")
+    m.fail(f"o/r/{stage}/QOT-1/antigravity", "timeout")
+    m.clear_notes(stage)
+    assert m.data["coverage"]["incomplete_checks"] == ["scanner scorecard: unavailable (needs a token)"]
+    assert m.data["failures"] == []
