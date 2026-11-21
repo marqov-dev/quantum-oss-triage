@@ -57,3 +57,12 @@ def test_the_limited_model_stays_when_no_other_can_check(tmp_path):
 def test_no_limit_by_default(tmp_path):
     c = ctx(tmp_path, limited=())
     assert ("antigravity", "independent") in verifiers(c, "zizmor")
+
+
+def test_a_same_model_check_already_given_is_kept_when_an_independent_model_joins(tmp_path):
+    # metriq-gym, 17 Nov 2026: Claude and Codex rechecked their own claim while Gemini was out of
+    # quota, and Claude's check produced the reproduction. When Gemini later verified the claim,
+    # the plan dropped both same-model checks, and with them the reproduction.
+    c = ctx(tmp_path, limited=())
+    c.ledger.unit("org/q", "verify", "QOT-claude+codex", "claude").save("done", {})
+    assert verifiers(c, "claude", "codex") == [("antigravity", "independent"), ("claude", "same_model")]
