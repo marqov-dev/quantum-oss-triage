@@ -29,6 +29,10 @@ def plan(ctx: RepoContext, groups: list[list[dict]]) -> list[dict]:
         if not detectors & merge.MODEL_TOOLS:
             others = _without_limited(ctx, gid, others)
         verifiers = [(m, "independent") for m in others] or [(m, "same_model") for m in models if m in detectors]
+        # A same-model check given while no independent model could verify is kept once one can:
+        # it may hold the only reproduction, which validate, gates and challenge build on.
+        verifiers += [(m, "same_model") for m in models if m in detectors and (m, "same_model") not in verifiers
+                      and ctx.ledger.unit(ctx.spec.name, "verify", gid, m).done()]
         out.append({"id": gid, "candidates": g, "verifiers": verifiers})
     return out
 
