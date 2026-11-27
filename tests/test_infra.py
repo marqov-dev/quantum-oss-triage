@@ -421,3 +421,48 @@ def test_round_two_candidates_file_loads():
     assert len(round_two) == 21
     assert not round_one & {r.name for r in round_two}
     assert all(r.source == f"https://github.com/{r.name}.git" for r in round_two)
+
+
+# --- `docker run` failing before the container starts (27 Nov 2026) -------------
+# Docker Desktop's VM disk went read-only: `docker info` and `docker image inspect`
+# still answered, so every head check was recorded as the project's failure.
+READ_ONLY = ("docker: Error response from daemon: write /var/lib/desktop-containerd/daemon/"
+             "io.containerd.metadata.v1.bolt/meta.db: read-only file system\n\n"
+             "Run 'docker run --help' for more information\n")
+
+
+def test_after_failure_reports_daemon_error_even_when_daemon_answers_queries():
+    g = guard(FakeDocker())
+    reason = g.outage_after_failure(125, READ_ONLY, image="img:dev")
+    assert reason is not None and reason.kind == "docker"
+    assert "read-only file system" in reason.reason
+
+
+def test_a_project_command_exiting_125_is_still_a_project_result():
+    g = guard(FakeDocker())
+    assert g.outage_after_failure(125, "bisect: skip this commit\n", image="img:dev") is None
+
+
+def test_worker_raises_when_docker_cannot_create_the_container(tmp_path, monkeypatch):
+    w, _ = worker_with(monkeypatch, FakeDocker(), container=(125, "", READ_ONLY))
+    with pytest.raises(InfrastructureUnavailable) as e:
+        w.run("pytest", tmp_path)
+    assert e.value.kind == "docker"
+
+
+class SandboxCannotStart(SandboxedFake):
+    """The daemon answers queries, but `docker run` for the sandbox fails (exit 125)."""
+
+    def run(self, prompt, system, schema_name, cwd, timeout_s=0):
+        self.calls.append((schema_name, prompt[:80]))
+        from harness.adapters.base import AdapterResult
+        return AdapterResult(False, None, "", None, error=f"exit 125: {READ_ONLY}")
+
+
+def test_sandboxed_model_call_whose_container_cannot_start_saves_no_unit(tmp_path):
+    d = FakeDocker()
+    ctx = _ctx(tmp_path, {"codex": SandboxCannotStart("codex", d)}, guard(d))
+    with pytest.raises(InfrastructureUnavailable) as e:
+        ctx.call_model("review", "review-correctness", "codex", "review-correctness", "p", 10)
+    assert e.value.kind == "docker"
+    assert not ctx.ledger.unit("test/m", "review", "review-correctness", "codex").path.exists()
