@@ -194,6 +194,10 @@ class ReviewerSandbox:
                                capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired:
             return None
+        if r.returncode != 0:
+            # `docker run` failed (or the CLI did): its stderr is not a version, and
+            # recording it would pass for a version needing its own attestation.
+            return None
         text = (r.stdout or r.stderr).strip()
         line = text.splitlines()[-1] if text else "unknown"
         # A rebuilt image needs its own attestation.

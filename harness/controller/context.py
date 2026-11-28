@@ -95,7 +95,9 @@ class RepoContext:
         if guard is not None and sandbox is not None and not r.ok and not r.usage_limited:
             # The sandbox container may have failed because Docker went away: then this
             # unit says nothing about the model, so nothing is saved and the run pauses.
-            guard.raise_if_outage(None, r.error or "", sandbox_image)
+            # A sandbox whose `docker run` failed reports "exit 125: <docker's stderr>".
+            code = 125 if (r.error or "").startswith("exit 125:") else None
+            guard.raise_if_outage(code, r.error or "", sandbox_image)
         meta = dict(tokens=r.tokens, model_id=r.model_id, attempts=r.attempts, duration_s=r.duration_s,
                     extra={"command": r.command, "skill_sha256": skill.sha256,
                            **({"inputs": inputs} if inputs is not None else {})})

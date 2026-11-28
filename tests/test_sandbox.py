@@ -183,3 +183,26 @@ def test_antigravity_parse_current_json_format():
     err = {"conversation_id": "", "status": "ERROR", "response": "", "error": "authentication failed or timed out"}
     p = a.parse(Invocation(1, json.dumps(err), "", False, 1.0))
     assert p.failed_call and "authentication" in p.error
+
+
+def test_version_is_unknown_when_docker_run_fails(tmp_path, monkeypatch):
+    # 27 Nov 2026: with Docker's VM disk read-only, the last line of `docker run`'s
+    # error ("Run 'docker run --help' ...") was recorded as the CLI's version.
+    import subprocess
+    sb = sandbox(tmp_path)
+    monkeypatch.setattr(sb, "image_id", lambda: "sha256:6f7eef5c88d7aaaa")
+    err = ("docker: Error response from daemon: write /var/lib/desktop-containerd/daemon/"
+           "io.containerd.metadata.v1.bolt/meta.db: read-only file system\n\n"
+           "Run 'docker run --help' for more information\n")
+    monkeypatch.setattr("harness.adapters.sandbox.subprocess.run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 125, "", err))
+    assert sb.version() is None
+
+
+def test_version_reports_the_cli_line_and_image(tmp_path, monkeypatch):
+    import subprocess
+    sb = sandbox(tmp_path)
+    monkeypatch.setattr(sb, "image_id", lambda: "sha256:6f7eef5c88d7aaaa")
+    monkeypatch.setattr("harness.adapters.sandbox.subprocess.run",
+                        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, "codex-cli 0.98.0\n", ""))
+    assert sb.version() == "codex-cli 0.98.0 (sandbox 6f7eef5c88d7)"

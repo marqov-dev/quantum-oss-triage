@@ -78,6 +78,19 @@ def docker_data_path(setting, settings_files=DOCKER_DESKTOP_SETTINGS) -> Path | 
     return None
 
 
+def _docker_run_error(stderr: str) -> InfrastructureUnavailable | None:
+    """`docker run` itself failed, so the container never started.
+
+    The daemon can answer `docker info` and `docker image inspect` and still be
+    unable to create a container (on 27 Nov 2026 Docker Desktop's VM disk went
+    read-only). Exit 125 alone is not enough, since a project command may exit
+    125 itself; Docker's own errors are prefixed by the CLI."""
+    lines = [l.strip() for l in (stderr or "").splitlines() if l.strip()]
+    for line in lines:
+        if line.startswith("docker: ") or "Error response from daemon" in line:
+            return InfrastructureUnavailable("docker", f"docker run failed before the container started ({line})")
+    return None
+
 class InfraGuard:
     """Checks the Docker daemon, images and free disk space, caching each answer for `ttl_s`."""
 
@@ -166,7 +179,10 @@ class InfraGuard:
         problem = self.daemon_problem(force=True) or self.disk_problem(force=True)
         if not problem and image and exit_code == 125:
             problem = self.image_problem(image, force=True)
+        if not problem and exit_code == 125:
+            problem = _docker_run_error(stderr)
         return problem
+
 
     def raise_if_outage(self, exit_code, stderr: str = "", image: str | None = None) -> None:
         problem = self.outage_after_failure(exit_code, stderr, image)
